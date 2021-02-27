@@ -1,0 +1,6 @@
+[submodule "GPUHashmaps_cse498"]
+	path = GPUHashmaps_cse498
+	url = git@github.com:CSE-498-011-SP21/GPUHashmaps_cse498.git
+[submodule "vcpkg"]
+	path = vcpkg
+	url = git@github.com:microsoft/vcpkg.git
