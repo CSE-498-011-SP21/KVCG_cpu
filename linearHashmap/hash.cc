@@ -4,6 +4,22 @@
 * -- Amanda Baran
 */
 
+//In KVCG:
+// Keys are 8Bs (u64_ints), Vals are pointers or 8B value
+    //Keys will be 64 bits
+    //Want to use the first 4 (maybe more?) bits as the prefix
+        //# to bit: std::string str = std::bitset<64>(K).to_string();
+        //Bit to #: std::cout << std::bitset<64>("11011011....").to_ulong();
+
+// To use the ordered linear hashing scheme:
+// make a mask and apply it and look at the bits to do the stuff with the prefixes.
+// hash function is division not mod
+
+//If we don't use an additional structure on top of MICA, it may not be possible to modify for range queries
+
+//TODO: add multithreading
+
+
 #include<bits/stdc++.h> 
 using namespace std; 
   
@@ -43,7 +59,7 @@ class HashMap
     HashMap() 
     { 
         //Initial capacity of hash array 
-        capacity = 20; 
+        capacity = 100; 
         size=0; 
         arr = new HashNode<K,V>*[capacity]; 
           
@@ -54,11 +70,18 @@ class HashMap
         //dummy node with value and key -1 
         dummy = new HashNode<K,V>(-1, -1); 
     } 
+
+    string to_bitstr(K key){
+        return std::bitset<64>(key).to_string();
+    }
+
     // This implements hash function to find index 
     // for a key 
     int hashCode(K key) 
     { 
-        return key % capacity; 
+        string str_key = to_bitstr(key);
+        return str_key /
+        //return key % capacity; 
     } 
       
     //Function to add key value pair 
