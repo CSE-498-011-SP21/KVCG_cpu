@@ -71,22 +71,20 @@ class HashMap
         dummy = new HashNode<K,V>(-1, -1); 
     } 
 
-    string to_bitstr(K key){
-        return std::bitset<64>(key).to_string();
-    }
-
-    // This implements hash function to find index 
-    // for a key 
+    // This implements hash function to find index for a key 
     int hashCode(K key) 
     { 
-        string str_key = to_bitstr(key);
-        return str_key /
+        std::bitset<64> bit_str(key); //makes 64 bit bitset w value of Key
+        bit_str.flip(); //reverses all bits
+        //i is the number of bits you are considering --> incrementing i is expensive so we don't want to pick something to small   
+        //but, we do now the max size of our table so this shouldn't be a huge issue, just need to pick a good i     
+        
         //return key % capacity; 
     } 
       
     //Function to add key value pair 
     void insertNode(K key, V value) 
-    { 
+    {
         HashNode<K,V> *temp = new HashNode<K,V>(key, value); 
           
         // Apply hash function to find index for given key 
