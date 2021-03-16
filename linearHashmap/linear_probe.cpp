@@ -270,7 +270,7 @@ public:
             std::vector<HashNode<K,V>> current_bucket = *it;
             std::cout << "Bucket " << counter << ": ";
             for(unsigned int index=0; index<current_bucket.size(); index++){
-                std::cout << current_bucket[index].key << ", " << current_bucket[index].value << "; ";
+                std::cout << current_bucket[index].key << ", " << current_bucket[index].value << " -> ";
             }
             std::cout << std::endl;
             counter++;
