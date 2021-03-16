@@ -284,11 +284,24 @@ int main()
     std::cout << "TEST" << std::endl;
     LinearHashMap<int, int> *mine = new LinearHashMap<int, int>;
 
-    mine->insert_node(10, 20);
+    // LEFT-OFF: This does NOT work how I want it to. More specifically, things seem to be inserted twice sometimes AND are lost after a number of resizings
+    // Run this code to get a better handle of where things are going wrong and then try to figure out what is going on
+
+    mine->insert_node(10, 10);
     mine->display();
-    mine->insert_node(10, 20);
-    mine->insert_node(15, 20);
+    // mine->insert_node(10, 10);
+    mine->insert_node(15, 15);
+    mine->display();
     mine->insert_node(20, 20);
+    mine->display();
+    mine->insert_node(32, 32);
+    mine->display();
+    mine->insert_node(41, 41);
+    mine->display();
+    mine->insert_node(52, 52);
+    mine->display();
+    mine->insert_node(65, 65);
+    mine->insert_node(77, 77);
     mine->display();
     // std::cout << mine->get(10) << std::endl;
 
