@@ -3,11 +3,8 @@
 #include<functional>
 #include<iostream>
 
-// TO-DO: Deal with problem when hash functions return a value that is smaller than the mod and we keep resizing!
-// Maybe just use a new hash function or apply a salt or something?
-
 template <typename T>
-class sequential: public cpu_cache<T>{
+class linear: public cpu_cache<T>{
 
     struct hash_entry{
         T value;
@@ -27,38 +24,10 @@ class sequential: public cpu_cache<T>{
         long (*hash1)(T);
         T (*get_random_T)();
 
-        void resize(){
-            long old_size = table_cap;
-            table_cap = (table_cap*2) + 1;
-
-            // If I want to be able to re-use the functions in this class, I need to reassign table_0 and table_1
-            hash_entry* old_table_0 = table_0;
-            hash_entry* old_table_1 = table_1;
-
-            table_0 = new hash_entry[table_cap];
-            table_1 = new hash_entry[table_cap];
-
-            // Add things back in the order they were added is probably best so start with table_1
-            for(long i=0; i<old_size; i++){
-                if(old_table_1[i].in_use){
-                    add(old_table_1[i].value);
-                }
-            }
-
-            for(long i=0; i<old_size; i++){
-                if(old_table_0[i].in_use){
-                    add(old_table_0[i].value);
-                }
-            }
-
-            // Free the old memory
-            delete old_table_0;
-            delete old_table_1;
-        }
 
     public:
         // Constructor
-        sequential(long init_cap, int init_add_limit, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()){
+        linear(long init_cap, int init_add_limit, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()){
             table_cap = init_cap;
             add_limit = init_add_limit;
             hash0 = hash0_arg;
@@ -80,10 +49,10 @@ class sequential: public cpu_cache<T>{
         }
 
         // Default init_add_limit to 1
-        sequential(long init_cap, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()) : sequential(init_cap, 1, hash0_arg, hash1_arg, get_random_T_arg){}
+        linear(long init_cap, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()) : linear(init_cap, 1, hash0_arg, hash1_arg, get_random_T_arg){}
 
         // Deconstructor
-        ~sequential(){
+        ~linear(){
             delete table_0;
             delete table_1;
         }
