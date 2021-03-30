@@ -5,7 +5,7 @@
 #define COMMON_H
 
 // Define a class to implement each version from
-template<typename V>
+template<typename K, typename V>
 class cpu_cache{
     // I probably need to declare something with the underlying data structure here
     // OH! I can just do that in each respective class definition! Should I make a null pointer or something though?
@@ -23,10 +23,10 @@ class cpu_cache{
         virtual ~cpu_cache(){}
         
         // Define virtual methods that must be implemented by each cpu_cache version
-        virtual bool add(V to_add) = 0;
-        virtual bool remove(V to_remove) = 0;
-        virtual bool contains(V to_find) = 0;
-        virtual bool range_query(V start, V end) = 0;
+        virtual bool add(K key_to_add, V val_to_add) = 0;
+        virtual bool remove(K to_remove) = 0;
+        virtual bool contains(K to_find) = 0;
+        virtual bool range_query(K start, K end) = 0;
         virtual long size() = 0;
         virtual void populate(long num_elements) = 0;
 
