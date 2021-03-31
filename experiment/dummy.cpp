@@ -231,7 +231,7 @@ class traditional_hash_map: public cpu_cache<K, V>{
         }
 
         bool contains(K to_find){
-            // std::cerr << "IN CONTAINS" << std::endl;
+            // std::cerr << "IN CONTAINS: " << to_find << std::endl;
 
             long hashed_value = hash0(to_find);
             long index = hashed_value % num_buckets;

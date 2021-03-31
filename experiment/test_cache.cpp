@@ -76,8 +76,12 @@ long hash_int_0(int to_hash){
     return to_hash;
 }
 
+// Globals are bad... but I don't care
+std::default_random_engine generator(42);
+std::uniform_int_distribution<int> distribution(0, 10000000);
+
 int get_random_int(){
-    return rand() % 10000000;
+    return distribution(generator);
 }
 
 // This will be where I create the cpu_caches and call the appropriate methods
@@ -89,14 +93,15 @@ int main(int argc, char** argv){
     std::cout << "Version (1=sequ, 2=concurr): " << params.version << std::endl;
     std::cout << std::endl;
 
-    srand(100);
+    std::default_random_engine option_generator(42);
+    std::uniform_int_distribution<int> option_distribution(0, 100);
 
     cpu_cache<int, int> *my_test_set = NULL;
 
     // VARS for controlling program execution
     long INIT_CAP = 100000;
     long POP_SIZE = 50000;
-    long NUM_OPS = 10000000;
+    long NUM_OPS = 100000000;
 
     std::cout << "Initial Table Capacity: " << INIT_CAP << std::endl;
     std::cout << "Initial Size: " << POP_SIZE << std::endl;
@@ -119,6 +124,7 @@ int main(int argc, char** argv){
     std::atomic<int> successful_adds(0);
     std::atomic<int> failed_adds(0);
     std::atomic<int> successful_updates(0);
+    // As of right now, failed_updates is not used, but that might be ok
     std::atomic<int> failed_updates(0);
     std::atomic<int> successful_removes(0);
     std::atomic<int> failed_removes(0);
@@ -130,18 +136,19 @@ int main(int argc, char** argv){
         
         for(int i=0; i<NUM_OPS; i++){
             // std::cout << "On i: " << i << std::endl;
-            int next_op = rand() % 100;
-            int next_int = get_random_int();
+            int next_op = option_distribution(option_generator);
+            int next_key = get_random_int();
+            int next_val = get_random_int();
             if(next_op < 50){
                 // Do contains
-                if(my_test_set->contains(next_int)){
+                if(my_test_set->contains(next_key)){
                     local_successful_contains++;
                 }else{
                     local_failed_contains++;
                 }
             }else if(next_op < 75){
                 // Do add/update
-                std::pair<bool, bool> result = my_test_set->add(next_int, next_int);
+                std::pair<bool, bool> result = my_test_set->add(next_key, next_val);
                 if(result.second){
                     local_successful_adds++;
                 }else if(result.first){
@@ -151,7 +158,7 @@ int main(int argc, char** argv){
                 }
             }else if(next_op < 100){
                 // Do remove
-                if(my_test_set->remove(next_int)){
+                if(my_test_set->remove(next_key)){
                     local_successful_removes++;   
                 }else{
                     local_failed_removes++;
@@ -165,7 +172,6 @@ int main(int argc, char** argv){
         successful_adds += local_successful_adds;
         failed_adds += local_failed_adds;
         successful_updates += local_successful_updates;
-        // As of right now, failed_updates is not used, but that might be ok
         failed_updates += local_failed_updates;
         successful_removes += local_successful_removes;
         failed_removes += local_failed_removes;
