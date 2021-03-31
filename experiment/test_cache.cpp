@@ -2,7 +2,7 @@
  * This file will create versions of the cpu_caches based on parameters and do testing on them
  */
 #include<iostream>
-// #include "sequential.cpp"
+#include "dummy.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -26,7 +26,7 @@ struct my_args{
 my_args get_args(int argc, char** argv){
     my_args params;
     params.num_threads = 1;
-    // params.update_ratio = 50;
+    params.update_ratio = 50;
     params.version = sequ;
 
     int opt;
@@ -76,25 +76,8 @@ long hash_int_0(int to_hash){
     return to_hash;
 }
 
-long hash_int_1(int to_hash){
-    return to_hash+1;
-}
-
 int get_random_int(){
     return rand() % 10000000;
-}
-
-long hash_double_0(double to_hash){
-    return (long)(to_hash * 10000);
-}
-
-long hash_double_1(double to_hash){
-    return (long)(to_hash * 20000);
-}
-
-double get_random_double(){
-    double my_rand = (double)rand()/(double)RAND_MAX; 
-    return my_rand;
 }
 
 // This will be where I create the cpu_caches and call the appropriate methods
@@ -108,12 +91,12 @@ int main(int argc, char** argv){
 
     srand(100);
 
-    cpu_cache<int> *my_test_set = NULL;
+    cpu_cache<int, int> *my_test_set = NULL;
 
     // VARS for controlling program execution
-    long INIT_CAP = 20000;
-    long POP_SIZE = 20000;
-    long NUM_OPS = 100000000;
+    long INIT_CAP = 100000;
+    long POP_SIZE = 50000;
+    long NUM_OPS = 10000000;
 
     std::cout << "Initial Table Capacity: " << INIT_CAP << std::endl;
     std::cout << "Initial Size: " << POP_SIZE << std::endl;
@@ -122,7 +105,7 @@ int main(int argc, char** argv){
     // Pick the data structure type that we are going to use
     switch(params.version){
         case sequ:
-            // my_test_set = new sequential<int>(INIT_CAP, &hash_int_0, &hash_int_1, &get_random_int);
+            my_test_set = new traditional_hash_map<int, int>(INIT_CAP, 1, &hash_int_0, &get_random_int, &get_random_int);
             break;
         case concurr:
             // my_test_set = new concurrent<int>(INIT_CAP, NUM_LOCKS, 8, 2, &hash_int_0, &hash_int_1, &get_random_int);
@@ -135,13 +118,15 @@ int main(int argc, char** argv){
     std::atomic<int> failed_contains(0);
     std::atomic<int> successful_adds(0);
     std::atomic<int> failed_adds(0);
+    std::atomic<int> successful_updates(0);
+    std::atomic<int> failed_updates(0);
     std::atomic<int> successful_removes(0);
     std::atomic<int> failed_removes(0);
 
     // TO-DO: Right now, this function assumes int. How can I avoid that? Maybe call random function from my_test_set?
     auto do_work = [&](long NUM_OPS){
         // Make local variables for saving the number of effective v. ineffective ops
-        long local_successful_contains = 0, local_failed_contains = 0, local_successful_adds = 0, local_failed_adds = 0, local_successful_removes = 0, local_failed_removes = 0;
+        long local_successful_contains = 0, local_failed_contains = 0, local_successful_adds = 0, local_failed_adds = 0, local_successful_updates = 0, local_failed_updates = 0, local_successful_removes = 0, local_failed_removes = 0;
         
         for(int i=0; i<NUM_OPS; i++){
             // std::cout << "On i: " << i << std::endl;
@@ -155,9 +140,12 @@ int main(int argc, char** argv){
                     local_failed_contains++;
                 }
             }else if(next_op < 75){
-                // Do add
-                if(my_test_set->add(next_int)){
+                // Do add/update
+                std::pair<bool, bool> result = my_test_set->add(next_int, next_int);
+                if(result.second){
                     local_successful_adds++;
+                }else if(result.first){
+                    local_successful_updates++;
                 }else{
                     local_failed_adds++;
                 }
@@ -176,6 +164,9 @@ int main(int argc, char** argv){
         failed_contains += local_failed_contains;
         successful_adds += local_successful_adds;
         failed_adds += local_failed_adds;
+        successful_updates += local_successful_updates;
+        // As of right now, failed_updates is not used, but that might be ok
+        failed_updates += local_failed_updates;
         successful_removes += local_successful_removes;
         failed_removes += local_failed_removes;
     };
@@ -183,7 +174,6 @@ int main(int argc, char** argv){
     std::vector<std::thread> threads;
     // TO-DO: Should I be dividing the number of ops by the number of threads so that those with more threads don't have more work?
     long ops_per_thread = NUM_OPS / params.num_threads;
-
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -216,6 +206,8 @@ int main(int argc, char** argv){
     std::cout << "Failed Contains: " << failed_contains << std::endl;
     std::cout << "Successful Adds: " << successful_adds << std::endl;
     std::cout << "Failed Adds: " << failed_adds << std::endl;
+    std::cout << "Successful Updates: " << successful_updates << std::endl;
+    std::cout << "Failed Updates: " << failed_updates << std::endl;
     std::cout << "Successful Removes: " << successful_removes << std::endl;
     std::cout << "Failed Removes: " << failed_removes << std::endl;
     std::cout << "Total Ops: " << successful_contains + failed_contains + successful_adds + failed_adds + successful_removes + failed_removes << std::endl;

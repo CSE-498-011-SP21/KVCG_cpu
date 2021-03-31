@@ -4,6 +4,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#include<utility>
+
 // Define a class to implement each version from
 template<typename K, typename V>
 class cpu_cache{
@@ -17,16 +19,16 @@ class cpu_cache{
 
     public:
         // Constructor
-        virtual cpu_cache(){}
+        // virtual cpu_cache(){}
 
         // Deconstructor
         virtual ~cpu_cache(){}
         
         // Define virtual methods that must be implemented by each cpu_cache version
-        virtual bool add(K key_to_add, V val_to_add) = 0;
+        virtual std::pair<bool, bool> add(K key_to_add, V val_to_add) = 0;
         virtual bool remove(K to_remove) = 0;
         virtual bool contains(K to_find) = 0;
-        virtual bool range_query(K start, K end) = 0;
+        virtual V* range_query(K start, K end) = 0;
         virtual long size() = 0;
         virtual void populate(long num_elements) = 0;
 

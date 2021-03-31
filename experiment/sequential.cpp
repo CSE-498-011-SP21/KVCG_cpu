@@ -6,11 +6,12 @@
 // TO-DO: Deal with problem when hash functions return a value that is smaller than the mod and we keep resizing!
 // Maybe just use a new hash function or apply a salt or something?
 
-template <typename T>
-class sequential: public cpu_cache<T>{
+template <typename K, typename V>
+class traditional_hash_map: public cpu_cache<K, V>{
 
     struct hash_entry{
-        T value;
+        K key;
+        V value;
         bool in_use;
     };
 
@@ -23,9 +24,9 @@ class sequential: public cpu_cache<T>{
         hash_entry* table_1;
 
         // Declare function pointers
-        long (*hash0)(T);
-        long (*hash1)(T);
-        T (*get_random_T)();
+        long (*hash0)(K);
+        long (*hash1)(K);
+        V (*get_random_K)();
 
         void resize(){
             long old_size = table_cap;
@@ -58,12 +59,12 @@ class sequential: public cpu_cache<T>{
 
     public:
         // Constructor
-        sequential(long init_cap, int init_add_limit, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()){
+        sequential(long init_cap, int init_add_limit, long (*hash0_arg)(V), long (*hash1_arg)(V), V (*get_random_T_arg)()){
             table_cap = init_cap;
             add_limit = init_add_limit;
             hash0 = hash0_arg;
             hash1 = hash1_arg;
-            get_random_T = get_random_T_arg;
+            get_random_K = get_random_T_arg;
 
             // Allocate memory, but it's garbage
             table_0 = new hash_entry[table_cap];
@@ -80,7 +81,7 @@ class sequential: public cpu_cache<T>{
         }
 
         // Default init_add_limit to 1
-        sequential(long init_cap, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()) : sequential(init_cap, 1, hash0_arg, hash1_arg, get_random_T_arg){}
+        sequential(long init_cap, long (*hash0_arg)(V), long (*hash1_arg)(V), V (*get_random_T_arg)()) : sequential(init_cap, 1, hash0_arg, hash1_arg, get_random_T_arg){}
 
         // Deconstructor
         ~sequential(){
@@ -88,7 +89,7 @@ class sequential: public cpu_cache<T>{
             delete table_1;
         }
         
-        bool add(T to_add){
+        bool add(V to_add){
             if(contains(to_add)){
                 return false;
             }
@@ -105,7 +106,7 @@ class sequential: public cpu_cache<T>{
                     return true;
                 }else{
                     // If we're here, we need to swap the value in table_0 with the value in table_1
-                    T save_add = table_0[index_0].value;
+                    V save_add = table_0[index_0].value;
                     table_0[index_0].value = to_add;
                     // Overwrite to_add so in the edge case that we resize, the saved add value is not lost (and the other one was already swapped in so it's good)
                     to_add = save_add;
@@ -135,7 +136,7 @@ class sequential: public cpu_cache<T>{
             return true;
         }
 
-        bool remove(T to_remove){
+        bool remove(V to_remove){
             long hashed_value_0 = hash0(to_remove);
             long index_0 = hashed_value_0 % table_cap;
 
@@ -162,7 +163,7 @@ class sequential: public cpu_cache<T>{
             return false;
         }
 
-        bool contains(T to_find){
+        bool contains(V to_find){
             long hashed_value_0 = hash0(to_find);
             long index_0 = hashed_value_0 % table_cap;
 
@@ -206,14 +207,14 @@ class sequential: public cpu_cache<T>{
         void populate(long num_elements){
             for(long i=0; i<num_elements; i++){
                 // Ensures effective adds
-                while(!add(get_random_T()));
+                while(!add(get_random_K()));
             }
         }
 
         void printTables(){
             std::cout << "Table Sizes: " << table_cap << std::endl;
 
-            // Should I have a to string function or something for printing the T values?
+            // Should I have a to string function or something for printing the V values?
             std::cout << "Table 0" << std::endl;
             for(long i=0; i<table_cap; i++){
                 std::cout << "Index: " << i << ", value: " << table_0[i].value << ", in_use: " << table_0[i].in_use << std::endl; 
