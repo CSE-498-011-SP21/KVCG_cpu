@@ -1,171 +1,307 @@
 #include "common.h"
-#include<vector>
-#include<functional>
-#include<iostream>
+#include <vector>
+#include <functional>
+#include <iostream>
+#include <mutex>
 
-template <typename T>
-class linear: public cpu_cache<T>{
+//template for generic type
+template <typename K, typename V>
+class hash_node
+{
+    public:
+        K key;
+        V value;
+        bool deleted;
 
-    struct hash_entry{
-        T value;
-        bool in_use;
-    };
+        //Constructor of hashnode
+        hash_node(K key, V value)
+        {
+            this->value = value;
+            this->key = key;
+            this->deleted = false;
+        }
+};
 
+template <typename K, typename V>
+struct bucket
+{
+    std::vector<hash_node<K,V> > bucket_table; 
+    std::mutex mtx;
+};
+
+template <typename K, typename V>
+class linear_hashmap: public cpu_cache<K,V>{
     private:
-        long table_cap;
+        // We use a vector since that is probably optimized for what I am going for 
+        // (appending to the end and being able to index into any element quickly with underlying memory)
+        std::vector<bucket<K,V> > map;
+        std::mutex *mtx;
 
-        int add_limit;
-
-        hash_entry* table_0;
-        hash_entry* table_1;
-
+        //TODO: pick a good number for i
+        // i is the number of bits to consider in the hash function (2^i, that is)
+        int i = 0;
+        //tracks number of buckets in the hashmap 
+        long num_buckets = 0;
+        long num_records = 0;
+        // p is the value we use to know when we should add a new bucket to the hash map
+        // That is, if it is exceded by r/n, then we add a new bucket
+        int p = 1;
+        
         // Declare function pointers
-        long (*hash0)(T);
-        long (*hash1)(T);
-        T (*get_random_T)();
+        K (*get_random_K)();
+        V (*get_random_V)();
 
 
     public:
+
         // Constructor
-        linear(long init_cap, int init_add_limit, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()){
-            table_cap = init_cap;
-            add_limit = init_add_limit;
-            hash0 = hash0_arg;
-            hash1 = hash1_arg;
-            get_random_T = get_random_T_arg;
+        linear_hashmap(K (*get_random_K_arg)(), V (*get_random_V_arg)()){
+            
+            get_random_K = get_random_K_arg;
+            get_random_V = get_random_V_arg;
 
-            // Allocate memory, but it's garbage
-            table_0 = new hash_entry[table_cap];
-            table_1 = new hash_entry[table_cap];
+            // This reserve is to prevent adding new buckets from being expensive until we increment i
+            long init_buckets = pow(2,i);
+            map.reserve(init_buckets);
 
-            // Mark all entries in both tables as not in use
-            for(long i=0; i<table_cap; i++){
-                table_0[i].in_use = false;
-            }
+            // Make my first bucket so that there is 1 to start with always
+            bucket<K,V>* b = new bucket<K,V>();
+            map.push_back(b);
+            num_buckets++;
 
-            for(long i=0; i<table_cap; i++){
-                table_1[i].in_use = false;
-            }
         }
-
-        // Default init_add_limit to 1
-        linear(long init_cap, long (*hash0_arg)(T), long (*hash1_arg)(T), T (*get_random_T_arg)()) : linear(init_cap, 1, hash0_arg, hash1_arg, get_random_T_arg){}
 
         // Deconstructor
-        ~linear(){
-            delete table_0;
-            delete table_1;
+        ~linear_hashmap(){
+            delete map;
+        }
+
+        u_int64_t hash(K key){
+            return key % (int)pow(2, i);
         }
         
-        bool add(T to_add){
-            if(contains(to_add)){
-                return false;
+        //bool pair returned represents <was add successful, did size increase>
+        std::pair<bool, bool> add(K key_to_add, V val_to_add){
+
+            // Apply hash function to find index for given key
+            u_int64_t hash_index = hash(key_to_add);
+
+            if(hash_index >= num_buckets){
+                // This should only ever happen ONCE, if at all
+                // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
+                hash_index /= 2;
             }
 
-            for(int i=0; i<add_limit; i++){
-                long hashed_value_0 = hash0(to_add);
-                long index_0 = hashed_value_0 % table_cap;
+            //Lock the bucket
+            this->map.at(hash_index)->mtx.lock();
 
-                // First, check if the first table contains a value already
-                if(!table_0[index_0].in_use){
-                    // If not, add our value to the structure and return
-                    table_0[index_0].value = to_add;
-                    table_0[index_0].in_use = true;
-                    return true;
-                }else{
-                    // If we're here, we need to swap the value in table_0 with the value in table_1
-                    T save_add = table_0[index_0].value;
-                    table_0[index_0].value = to_add;
-                    // Overwrite to_add so in the edge case that we resize, the saved add value is not lost (and the other one was already swapped in so it's good)
-                    to_add = save_add;
+            // Check if the key is already in the data structure
+            bucket<K,V> search_bucket = map.at(hash_index);
+            for(unsigned int index=0; index<search_bucket.size(); index++){
+                if(key_to_add == search_bucket[index].key){
+                    //Update the value if key already exists
+                    search_bucket[index].value = val_to_add;
+                    this->map.at(hash_index).mtx.unlock();
+                    return {true, false};
+                }
+            }
 
-                    long hashed_value_1 = hash1(to_add);
-                    long index_1 = hashed_value_1 % table_cap;
+            //add the entry
+            map.at(hash_index).push_back(hash_node<K,V>(key_to_add, val_to_add));
+            num_records++;
+
+            //check if p is violated and make necessary adjustments
+            double p_check = (double)num_records/num_buckets;
+            std::cerr << "P check: " << p_check << std::endl;
+            if(p < p_check){
+                // p is violated!
+                std::cerr << "p was violated, fixing..." << std::endl;
+
+                if(num_buckets == pow(2, i)){
+                    // We're at the max number of buckets! We need to remake the whole hashmap
+                    i++;
+                    num_buckets++;
+
+                    // New hash map we are going to use
+                    std::vector<bucket<K,V>> new_hash_map = std::vector<bucket<K,V>>();
                     
-                    // Now we check if we can add the next value 
-                    if(!table_1[index_1].in_use){
-                        // We can add the value
-                        table_1[index_1].value = to_add;
-                        table_1[index_1].in_use = true;
-                        return true;
-                    }else{
-                        save_add = table_1[index_1].value;
-                        table_1[index_1].value = to_add;
-                        to_add = save_add;
-                        // Now we retry from the beginning of the for loop
+                    // This reserve is to prevent adding new buckets from being expensive until we increment i
+                    new_hash_map.reserve(pow(2, i));
+
+                    // Make new hash map with new buckets
+                    for(int j=0; j<num_buckets; j++){
+                        bucket<K,V>* b = new bucket<K,V>();
+                        new_hash_map.push_back(b);
+                    }
+                    
+                    //unlock so that we can lock every single bucket
+                    this->map.at(hash_index).mtx.unlock();
+                    //lock every bucket first
+                    for(size_t i = 0; i < this->map.size(); i++){
+                        this->map.at(i).mtx.lock();
+                    }
+
+                    // Rehash old values into new values
+                    for(auto it=map.begin(); it<map.end(); it++){
+                        bucket<K,V> current_bucket = *it;
+                        for(unsigned int index=0; index<current_bucket.size(); index++){
+                            int hash_index = hash(current_bucket[index].key);
+                            if(hash_index >= num_buckets){
+                                // This should only ever happen ONCE, if at all
+                                // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
+                                hash_index /= 2;
+                            }
+
+                            if(hash_index >= num_buckets){
+                                // For debugging, just check that above assertion is always true
+                                std::cerr << "Uh-oh! The hash index is still greater than the number of buckets!" << std::endl;
+                            }
+
+                            // We know there are no dups so we don't have to check for that
+                            new_hash_map[hash_index].push_back(hash_node<K, V>(current_bucket[index].key, current_bucket[index].value));
+                            // Also, num_records has already been incremented so don't worry about that either
+                            //TODO: ask matt about above statement, where is it incremented??
+                        }
+                    }
+                    //unlock every bucket 
+                    for(size_t i = 0; i < this->map.size(); i++){
+                        this->map.at(i).mtx.unlock();
+                    }
+
+                    // Assign the hash_map to the new one that was just made
+                    map = new_hash_map;
+                    return {true, true};
+                }else{
+                    // I can just add a new bucket and remap the other bucket that was being used for all the values in this bucket
+                    map.push_back(new bucket<K,V>());
+                    num_buckets++;
+                    
+                    // Now, go to other bucket holding some of this bucket's values and add them here, if appropriate
+                    bucket<K,V> old_bucket = map[(num_buckets-1)/2];
+                    std::vector<int> indicies_to_remove_from_old_bucket;
+                    // Iterate over bucket and remove entries that should be added to the new bucket
+                    for(unsigned int index=0; index<old_bucket.size(); index++){
+                        if(hash(old_bucket[index].key) == (num_buckets-1)){
+                            // This value entry should be in the new bucket
+                            map[num_buckets-1].push_back(old_bucket[index]);
+                        }else{
+                            // This value entry should be in the old bucket
+                            indicies_to_remove_from_old_bucket.push_back(index);
+                        }
+                    }
+
+                    // Clean up old bucket
+                    for(unsigned int index=0; index<indicies_to_remove_from_old_bucket.size(); index++){
+                        // Must use the hash_map since old_bucket is a deep copy!
+                        // This is super gross, FIX THIS to be more efficient! Just use an iterator on the above loop, comon MAtt
+                        map[(num_buckets-1)/2].erase(map[(num_buckets-1)/2].begin() + indicies_to_remove_from_old_bucket[index]);
+                    }
+                }
+            }   
+            this->map.at(hash_index).mtx.unlock();
+            return {true, true};
+        }
+
+        bool remove(K to_remove){
+            // Apply hash function to find index for given key
+            u_int64_t hash_index = hash(to_remove);
+
+            if(hash_index >= num_buckets){
+                // This should only ever happen ONCE, if at all
+                // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
+                hash_index /= 2;
+            }
+
+            //Lock the bucket
+            const std::lock_guard<std::mutex> lock(this->map.at(hash_index).mtx);
+            // Check if the key is already in the data structure
+            bucket<K,V> search_bucket = map.at(hash_index);
+            for(unsigned int index=0; index<search_bucket.size(); index++){
+                if(to_remove == search_bucket[index].key){
+                    //Mark as deleted if key exists
+                    this->map.at(hash_index).deleted = true;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool contains(K to_find){
+            // Apply hash function to find index for given key
+            u_int64_t hash_index = hash(to_find);
+
+            if(hash_index >= num_buckets){
+                // This should only ever happen ONCE, if at all
+                // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
+                hash_index /= 2;
+            }
+
+            //Lock the bucket
+            const std::lock_guard<std::mutex> lock(this->map.at(hash_index).mtx);
+            // Check if the key is already in the data structure
+            bucket<K,V> search_bucket = map.at(hash_index);
+            for(unsigned int index=0; index<search_bucket.size(); index++){
+                if(to_find == search_bucket[index].key){
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        V* range_query(K start, K end){
+            // Apply hash function to find index for start key
+            u_int64_t start_index = hash(start);
+            if(start_index >= num_buckets){
+                // This should only ever happen ONCE, if at all
+                // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
+                start_index /= 2;
+            }
+            //Query for 1 key
+            if(start == end){
+                //Lock the bucket
+                const std::lock_guard<std::mutex> lock(this->map.at(start_index).mtx);
+                // Check if the key is already in the data structure
+                bucket<K,V> search_bucket = map.at(start_index);
+                for(unsigned int index=0; index<search_bucket.size(); index++){
+                    if(start == search_bucket[index].key){
+                        //return value if found
+                        return search_bucket[index].value;
                     }
                 }
             }
+            //Query is for more than 1 key
+            std::vector<V> result;
+            u_int64_t end_index = hash(end);
+            bucket<K,V> start_bucket = map.at(start_index);
+            bucket<K,V> end_bucket = map.at(end_index);
 
-            // If we make it here, we have to resize the data structure
-            resize();
-            add(to_add);
-
-            return true;
-        }
-
-        bool remove(T to_remove){
-            long hashed_value_0 = hash0(to_remove);
-            long index_0 = hashed_value_0 % table_cap;
-
-            // First, check if the first table contains the hashed value
-            if(table_0[index_0].in_use){
-                if(table_0[index_0].value == to_remove){
-                    // Found it! Mark it as not in use
-                    table_0[index_0].in_use = false;
-                    return true;
+            if (start_index == end_index){
+                //lock bucket
+                const std::lock_guard<std::mutex> lock(start_bucket->mtx);
+                //just search through the 1 bucket until you get to the end key
+                for(auto it=start_bucket->bucket_table.begin(); it<start_bucket->bucket_table.end(); it++){
+                    hash_node<K,V> curr_node = *it;
+                    if (curr_node.key <= end){
+                        result.push_back(curr_node.value);
+                    }
                 }
+                return result;
             }
 
-            long hashed_value_1 = hash1(to_remove);
-            long index_1 = hashed_value_1 % table_cap;
-            
-            if(table_1[index_1].in_use){
-                if(table_1[index_1].value == to_remove){
-                    // Found it! Mark it as not in use
-                    table_1[index_1].in_use = false;
-                    return true;
-                }
-            }
+            //TODO: Figure out how to return range query when there are multple buckets
 
-            return false;
-        }
-
-        bool contains(T to_find){
-            long hashed_value_0 = hash0(to_find);
-            long index_0 = hashed_value_0 % table_cap;
-
-            // First, check if the first table contains the hashed value
-            if(table_0[index_0].in_use){
-                if(table_0[index_0].value == to_find){
-                    return true;
-                }
-            }
-
-            long hashed_value_1 = hash1(to_find);
-            long index_1 = hashed_value_1 % table_cap;
-            
-            if(table_1[index_1].in_use){
-                if(table_1[index_1].value == to_find){
-                    return true;
-                }
-            }
-
-            return false;
+            return nullptr;
         }
 
         long size(){
             long total_elements = 0;
             
-            for(long i=0; i<table_cap; i++){
-                if(table_0[i].in_use == true){
-                    total_elements++;
-                }
-            }
-
-            for(long i=0; i<table_cap; i++){
-                if(table_1[i].in_use == true){
-                    total_elements++;
+            for(long i=0; i<map.size(); i++){
+                bucket<K,V> search_bucket = map.at(i);
+                for (long j=0; j<search_bucket.size(); j++){
+                    if(search_bucket.at(j).deleted == false){
+                        total_elements++;
+                    }
                 }
             }
 
@@ -175,22 +311,20 @@ class linear: public cpu_cache<T>{
         void populate(long num_elements){
             for(long i=0; i<num_elements; i++){
                 // Ensures effective adds
-                while(!add(get_random_T()));
+                while(!add(get_random_K(), get_random_V()));
             }
         }
 
-        void printTables(){
-            std::cout << "Table Sizes: " << table_cap << std::endl;
-
-            // Should I have a to string function or something for printing the T values?
-            std::cout << "Table 0" << std::endl;
-            for(long i=0; i<table_cap; i++){
-                std::cout << "Index: " << i << ", value: " << table_0[i].value << ", in_use: " << table_0[i].in_use << std::endl; 
-            }
-
-            std::cout << "Table 1" << std::endl;
-            for(long i=0; i<table_cap; i++){
-                std::cout << "Index: " << i << ", value: " << table_1[i].value << ", in_use: " << table_1[i].in_use << std::endl; 
+        void printMap(){
+            int counter = 0;
+            for(auto it=map.begin(); it<map.end(); it++){
+                bucket<K,V> current_bucket = *it;
+                std::cout << "Bucket " << counter << ": ";
+                for(unsigned int index=0; index<current_bucket.size(); index++){
+                    std::cout << current_bucket[index].key << ", " << current_bucket[index].value << " -> ";
+                }
+                std::cout << std::endl;
+                counter++;
             }
         }
 };
