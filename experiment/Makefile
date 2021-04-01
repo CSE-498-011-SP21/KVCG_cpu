@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -Wall -Wextra -Werror -Wwrite-strings -pthread -std=c++14
-OPT = -O3
+OPT = -O3 -g
 
 all: test_cache linear
 
