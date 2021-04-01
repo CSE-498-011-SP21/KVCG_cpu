@@ -5,6 +5,7 @@
 #define COMMON_H
 
 #include<utility>
+#include<vector>
 
 // Define a class to implement each version from
 template<typename K, typename V>
@@ -28,7 +29,7 @@ class cpu_cache{
         virtual std::pair<bool, bool> add(K key_to_add, V val_to_add) = 0;
         virtual bool remove(K to_remove) = 0;
         virtual bool contains(K to_find) = 0;
-        virtual V* range_query(K start, K end) = 0;
+        virtual std::vector<V> range_query(K start, K end) = 0;
         virtual long size() = 0;
         virtual void populate(long num_elements) = 0;
 
