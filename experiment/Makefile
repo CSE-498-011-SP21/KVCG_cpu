@@ -17,10 +17,10 @@ common:
 # transactional: common.o
 # 	$(CC) $(CFLAGS) $(OPT) -c transactional.cpp
 
-dummy: common.o
-	$(CC) $(CFLAGS) $(OPT) -c dummy.cpp
+traditional: common.o
+	$(CC) $(CFLAGS) $(OPT) -c seq_trad_hashmap.cpp
 
-test_cache: dummy.o test_cache.cpp
+test_cache: seq_trad_hashmap.o test_cache.cpp
 	$(CC) $(CFLAGS) $(OPT) -o test_cache test_cache.cpp
 
 linear: dummy.o test_cache.cpp
