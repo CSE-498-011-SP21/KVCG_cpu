@@ -2,7 +2,7 @@
  * This file will create versions of the cpu_caches based on parameters and do testing on them
  */
 #include<iostream>
-#include "dummy.cpp"
+#include "seq_trad_hashmap.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -78,7 +78,9 @@ long hash_int_0(int to_hash){
 
 // Globals are bad... but I don't care
 std::default_random_engine generator(42);
-std::uniform_int_distribution<int> distribution(0, 10000000);
+// std::uniform_int_distribution<int> distribution(0, 2147483647);
+std::uniform_int_distribution<int> distribution(0, 100000000);
+// std::uniform_int_distribution<int> distribution(0, 100);
 
 int get_random_int(){
     return distribution(generator);
@@ -99,10 +101,11 @@ int main(int argc, char** argv){
     cpu_cache<int, int> *my_test_set = NULL;
 
     // VARS for controlling program execution
-    long INIT_CAP = 100000;
-    long POP_SIZE = 50000;
-    long NUM_OPS = 100000000;
+    long INIT_CAP = 4096*32*16;
+    long POP_SIZE = 2048*32*16;
+    long NUM_OPS = 10000000;
 
+    
     std::cout << "Initial Table Capacity: " << INIT_CAP << std::endl;
     std::cout << "Initial Size: " << POP_SIZE << std::endl;
     std::cout << "Number of Operations: " << NUM_OPS << std::endl;
@@ -110,7 +113,8 @@ int main(int argc, char** argv){
     // Pick the data structure type that we are going to use
     switch(params.version){
         case sequ:
-            my_test_set = new traditional_hash_map<int, int>(INIT_CAP, 1, &hash_int_0, &get_random_int, &get_random_int);
+            my_test_set = new seq_traditional_hash_map<int, int>(INIT_CAP, 16, &hash_int_0, &get_random_int, &get_random_int);
+            // my_test_set = new seq_traditional_hash_map<int, int>(INIT_CAP, 10000, &hash_int_0, &get_random_int, &get_random_int);
             break;
         case concurr:
             // my_test_set = new concurrent<int>(INIT_CAP, NUM_LOCKS, 8, 2, &hash_int_0, &hash_int_1, &get_random_int);
@@ -121,6 +125,8 @@ int main(int argc, char** argv){
 
     std::atomic<int> successful_contains(0);
     std::atomic<int> failed_contains(0);
+    std::atomic<int> successful_range_queries(0);
+    std::atomic<int> failed_range_queries(0);
     std::atomic<int> successful_adds(0);
     std::atomic<int> failed_adds(0);
     std::atomic<int> successful_updates(0);
@@ -130,15 +136,34 @@ int main(int argc, char** argv){
     std::atomic<int> failed_removes(0);
 
     // TO-DO: Right now, this function assumes int. How can I avoid that? Maybe call random function from my_test_set?
-    auto do_work = [&](long NUM_OPS){
+    auto do_work = [&](long number_of_ops){
         // Make local variables for saving the number of effective v. ineffective ops
-        long local_successful_contains = 0, local_failed_contains = 0, local_successful_adds = 0, local_failed_adds = 0, local_successful_updates = 0, local_failed_updates = 0, local_successful_removes = 0, local_failed_removes = 0;
-        
-        for(int i=0; i<NUM_OPS; i++){
+        long local_successful_contains = 0, local_failed_contains = 0, local_successful_range_queries = 0, local_failed_range_queries = 0, local_successful_adds = 0, local_failed_adds = 0, local_successful_updates = 0, local_failed_updates = 0, local_successful_removes = 0, local_failed_removes = 0;
+
+        for(int i=0; i<number_of_ops; i++){
             // std::cout << "On i: " << i << std::endl;
+
+            // I should do all the random number generation everytime so runs are consistent even if I adjust parameters
+
             int next_op = option_distribution(option_generator);
+            int number_of_elements = option_distribution(option_generator);
             int next_key = get_random_int();
             int next_val = get_random_int();
+            if(next_op < 5){
+                // Do range query
+                std::vector<int> returned_values = my_test_set->range_query(next_key, (next_key+number_of_elements));
+
+                // std::cout << "Start: " << next_key << ", End: " << next_key+number_of_elements << std::endl;
+                // for(unsigned int i=0; i < returned_values.size(); i++)
+                //     std::cout << returned_values.at(i) << ' ';
+                // std::cout << std::endl;
+
+                if(!returned_values.empty()){
+                    local_successful_range_queries++;
+                }else{
+                    local_failed_range_queries++;
+                }
+            }
             if(next_op < 50){
                 // Do contains
                 if(my_test_set->contains(next_key)){
@@ -169,6 +194,8 @@ int main(int argc, char** argv){
         // Add vars for counting operations to atomics
         successful_contains += local_successful_contains;
         failed_contains += local_failed_contains;
+        successful_range_queries += local_successful_range_queries;
+        failed_range_queries += local_failed_range_queries;
         successful_adds += local_successful_adds;
         failed_adds += local_failed_adds;
         successful_updates += local_successful_updates;
@@ -210,6 +237,8 @@ int main(int argc, char** argv){
 
     std::cout << "Successful Contains: " << successful_contains << std::endl;
     std::cout << "Failed Contains: " << failed_contains << std::endl;
+    std::cout << "Successful Range Queries: " << successful_range_queries << std::endl;
+    std::cout << "Failed Range Queries: " << failed_range_queries << std::endl;
     std::cout << "Successful Adds: " << successful_adds << std::endl;
     std::cout << "Failed Adds: " << failed_adds << std::endl;
     std::cout << "Successful Updates: " << successful_updates << std::endl;
