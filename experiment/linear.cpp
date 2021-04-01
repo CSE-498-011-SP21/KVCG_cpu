@@ -248,6 +248,8 @@ class linear_hashmap: public cpu_cache<K,V>{
         }
 
         std::vector<V> range_query(K start, K end){
+            std::vector<V> result;
+
             // Apply hash function to find index for start key
             u_int64_t start_index = hash(start);
             if(start_index >= num_buckets){
@@ -264,12 +266,12 @@ class linear_hashmap: public cpu_cache<K,V>{
                 for(unsigned int index=0; index<search_bucket->bucket_table.size(); index++){
                     if(start == search_bucket->bucket_table.at(index).key){
                         //return value if found
-                        return search_bucket->bucket_table.at(index).value;
+                        result.push_back(search_bucket->bucket_table.at(index).value);
+                        return result;
                     }
                 }
             }
             //Query is for more than 1 key
-            std::vector<V> result;
             u_int64_t end_index = hash(end);
             bucket* start_bucket = this->map.at(start_index);
 
@@ -291,7 +293,7 @@ class linear_hashmap: public cpu_cache<K,V>{
                 bucket* search_bucket = this->map.at(i);
                 for(uint64_t j = 0; j < search_bucket->bucket_table.size(); j++){
                     if(search_bucket->bucket_table.at(j).key <= end){
-                        result.push_back(search_bucket->bucket_table.at(j));
+                        result.push_back(search_bucket->bucket_table.at(j).value);
                     }
                 }
             }
@@ -301,9 +303,9 @@ class linear_hashmap: public cpu_cache<K,V>{
         long size(){
             long total_elements = 0;
             
-            for(long i=0; i<this->map.size(); i++){
+            for(uint64_t i=0; i<this->num_buckets; i++){
                 bucket* search_bucket = this->map.at(i);
-                for (long j=0; j<search_bucket->bucket_table.size(); j++){
+                for (uint64_t j=0; j<search_bucket->bucket_table.size(); j++){
                     if(search_bucket->bucket_table.at(j).deleted == false){
                         total_elements++;
                     }
@@ -315,8 +317,7 @@ class linear_hashmap: public cpu_cache<K,V>{
 
         void populate(long num_elements){
             for(long i=0; i<num_elements; i++){
-                // Ensures effective adds
-                while(!add(get_random_K(), get_random_V()));
+                add(get_random_K(), get_random_V());
             }
         }
 

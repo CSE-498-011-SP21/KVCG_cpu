@@ -3,6 +3,7 @@
  */
 #include<iostream>
 #include "seq_trad_hashmap.cpp"
+#include "linear.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -12,7 +13,8 @@
 
 enum run_type{
     sequ = 1,
-    concurr = 2
+    concurr = 2,
+    linear = 3
 };
 
 // Define a struct to hold arguments
@@ -25,9 +27,9 @@ struct my_args{
 // Define a method for getting arguments (and validating them)
 my_args get_args(int argc, char** argv){
     my_args params;
-    params.num_threads = 1;
+    params.num_threads = 2;
     params.update_ratio = 50;
-    params.version = sequ;
+    params.version = linear;
 
     int opt;
     // while((opt = getopt(argc, argv, "t:u:v:")) != -1){
@@ -119,6 +121,8 @@ int main(int argc, char** argv){
         case concurr:
             // my_test_set = new concurrent<int>(INIT_CAP, NUM_LOCKS, 8, 2, &hash_int_0, &hash_int_1, &get_random_int);
             break;
+        case linear:
+            my_test_set = new linear_hashmap<int, int>(&get_random_int, &get_random_int);
     }
 
     my_test_set->populate(POP_SIZE);
