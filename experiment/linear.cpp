@@ -117,6 +117,7 @@ class linear_hashmap: public cpu_cache<K,V>{
                 std::cerr << "p was violated, fixing..." << std::endl;
 
                 if(num_buckets == pow(2, i)){
+                    //TODO: CREATE FENCE
                     // We're at the max number of buckets! We need to remake the whole hashmap
                     i++;
                     num_buckets++;
@@ -146,7 +147,7 @@ class linear_hashmap: public cpu_cache<K,V>{
                         for(unsigned int index=0; index<current_bucket->bucket_table.size(); index++){
                             uint64_t hash_index = hash(current_bucket->bucket_table.at(index).key);
                             if(hash_index >= num_buckets){
-                                // This should only ever happen ONCE, if at all
+                                // This should only ever happen ONCE per element, if at all
                                 // That is because there will always be at least 2^(i-1) buckets SO by just ignoring the leading 1, the other bucket should exist
                                 hash_index /= 2;
                             }
@@ -159,7 +160,6 @@ class linear_hashmap: public cpu_cache<K,V>{
                             // We know there are no dups so we don't have to check for that
                             new_hash_map.at(hash_index)->bucket_table.push_back(hash_node<K, V>(current_bucket->bucket_table.at(index).key, current_bucket->bucket_table.at(index).value));
                             // Also, num_records has already been incremented so don't worry about that either
-                            //TODO: ask matt about above statement, where is it incremented??
                         }
                     }
                     //unlock every bucket 
