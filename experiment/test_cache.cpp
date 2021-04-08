@@ -3,6 +3,7 @@
  */
 #include<iostream>
 #include "seq_trad_hashmap.cpp"
+#include "concurr_trad_hashmap.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -59,15 +60,15 @@ my_args get_args(int argc, char** argv){
         }
     }
 
-    if(params.num_threads == 1 && params.version != sequ){
-        std::cout << "Should use sequential version if we only have 1 thread." << std::endl;
-        exit(1);
-    }
+    // if(params.num_threads == 1 && params.version != sequ){
+    //     std::cout << "Should use sequential version if we only have 1 thread." << std::endl;
+    //     exit(1);
+    // }
 
-    if(params.num_threads > 1 && params.version == sequ){
-        std::cout << "Cannot use more than 1 thread for sequential version." << std::endl;
-        exit(1);
-    }
+    // if(params.num_threads > 1 && params.version == sequ){
+    //     std::cout << "Cannot use more than 1 thread for sequential version." << std::endl;
+    //     exit(1);
+    // }
 
     return params;
 }
@@ -78,8 +79,8 @@ long hash_int_0(int to_hash){
 
 // Globals are bad... but I don't care
 std::default_random_engine generator(42);
-// std::uniform_int_distribution<int> distribution(0, 2147483647);
-std::uniform_int_distribution<int> distribution(0, 100000000);
+std::uniform_int_distribution<int> distribution(0, 2147483647);
+// std::uniform_int_distribution<int> distribution(0, 100000000);
 // std::uniform_int_distribution<int> distribution(0, 100);
 
 int get_random_int(){
@@ -96,15 +97,18 @@ int main(int argc, char** argv){
     std::cout << std::endl;
 
     std::default_random_engine option_generator(42);
-    std::uniform_int_distribution<int> option_distribution(0, 100);
+    std::uniform_int_distribution<int> option_distribution(0, 99);
 
     cpu_cache<int, int> *my_test_set = NULL;
 
     // VARS for controlling program execution
     long INIT_CAP = 4096*32*16;
     long POP_SIZE = 2048*32*16;
-    long NUM_OPS = 10000000;
+    long NUM_OPS = 100000000;
 
+    // long INIT_CAP = 8;
+    // long POP_SIZE = 0;
+    // long NUM_OPS = 10000000;
     
     std::cout << "Initial Table Capacity: " << INIT_CAP << std::endl;
     std::cout << "Initial Size: " << POP_SIZE << std::endl;
@@ -117,7 +121,7 @@ int main(int argc, char** argv){
             // my_test_set = new seq_traditional_hash_map<int, int>(INIT_CAP, 10000, &hash_int_0, &get_random_int, &get_random_int);
             break;
         case concurr:
-            // my_test_set = new concurrent<int>(INIT_CAP, NUM_LOCKS, 8, 2, &hash_int_0, &hash_int_1, &get_random_int);
+            my_test_set = new concurr_traditional_hash_map<int, int>(INIT_CAP, 16, &hash_int_0, &get_random_int, &get_random_int);
             break;
     }
 
@@ -149,7 +153,7 @@ int main(int argc, char** argv){
             int number_of_elements = option_distribution(option_generator);
             int next_key = get_random_int();
             int next_val = get_random_int();
-            if(next_op < 5){
+            if(next_op < 10){
                 // Do range query
                 std::vector<int> returned_values = my_test_set->range_query(next_key, (next_key+number_of_elements));
 
@@ -163,8 +167,7 @@ int main(int argc, char** argv){
                 }else{
                     local_failed_range_queries++;
                 }
-            }
-            if(next_op < 50){
+            }else if(next_op < 50){
                 // Do contains
                 if(my_test_set->contains(next_key)){
                     local_successful_contains++;

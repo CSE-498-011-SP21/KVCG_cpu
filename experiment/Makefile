@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -Wall -Wextra -Werror -Wwrite-strings -pthread -g
+CFLAGS = -Wall -Wextra -Werror -Wwrite-strings -pthread -std=c++17 -g
 OPT = -O3
 
 all: test_cache
@@ -20,7 +20,10 @@ common:
 traditional: common.o
 	$(CC) $(CFLAGS) $(OPT) -c seq_trad_hashmap.cpp
 
-test_cache: seq_trad_hashmap.o test_cache.cpp
+concurrent: common.o
+	$(CC) $(CFLAGS) $(OPT) -c concurr_trad_hashmap.cpp
+
+test_cache: seq_trad_hashmap.o concurr_trad_hashmap.o test_cache.cpp
 	$(CC) $(CFLAGS) $(OPT) -o test_cache test_cache.cpp
 
 # Add executable file names here as I make them
