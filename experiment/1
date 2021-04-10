@@ -1,0 +1,53 @@
+Num Threads: 1
+Update Ratio: 50
+Version (1=sequ, 2=concurr): 2
+
+Initial Table Capacity: 8
+Initial Size: 0
+Number of Operations: 10000000
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+0
+Data structure is consistent
+IN RESIZE, New Num Buckets: 16
+Table Address: 0x916c70
+Doing resize...
+GO!
+This is happening, right?
+done
+0
+Data structure is consistent
+IN RESIZE, New Num Buckets: 32
+Table Address: 0x9172c0
+Doing resize...
+GO!
