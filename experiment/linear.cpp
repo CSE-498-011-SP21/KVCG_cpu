@@ -4,6 +4,7 @@
 #include <iostream>
 #include <mutex>
 #include <cmath>
+#include <atomic>
 
 //template for generic type
 template <typename K, typename V>
@@ -40,8 +41,8 @@ class linear_hashmap: public cpu_cache<K,V>{
         // i is the number of bits to consider in the hash function (2^i, that is)
         int i = 0;
         //tracks number of buckets in the hashmap 
-        u_int64_t num_buckets = 0;
-        u_int64_t num_records = 0;
+        std::atomic<u_int64_t> num_buckets{0};
+        std::atomic<u_int64_t> num_records{0};
         // p is the value we use to know when we should add a new bucket to the hash map
         // That is, if it is exceded by r/n, then we add a new bucket
         int p = 1;
@@ -49,6 +50,9 @@ class linear_hashmap: public cpu_cache<K,V>{
         // Declare function pointers
         K (*get_random_K)();
         V (*get_random_V)();
+
+        //global lock
+        //std::mutex map_lock;
 
 
     public:
@@ -66,7 +70,7 @@ class linear_hashmap: public cpu_cache<K,V>{
             // Make my first bucket so that there is 1 to start with always
             bucket* b = new bucket();
             this->map.push_back(b);
-            num_buckets++;
+            ++num_buckets;
 
         }
 
@@ -109,6 +113,7 @@ class linear_hashmap: public cpu_cache<K,V>{
             this->map.at(hash_index)->bucket_table.push_back(hash_node<K,V>(key_to_add, val_to_add));
             num_records++;
 
+            //std::atomic_thread_fence(std::memory_order_acquire);
             //check if p is violated and make necessary adjustments
             double p_check = (double)num_records/num_buckets;
             std::cerr << "P check: " << p_check << std::endl;
@@ -117,10 +122,20 @@ class linear_hashmap: public cpu_cache<K,V>{
                 std::cerr << "p was violated, fixing..." << std::endl;
 
                 if(num_buckets == pow(2, i)){
-                    //TODO: CREATE FENCE
                     // We're at the max number of buckets! We need to remake the whole hashmap
-                    i++;
-                    num_buckets++;
+                    //TODO: CREATE FENCE here so that we don't race to incr num_buckets
+                    std::atomic_thread_fence(std::memory_order_acquire);
+
+                    //unlock so that we can lock every single bucket
+                    this->map.at(hash_index)->mtx.unlock();
+                    //lock every bucket first
+                    for(size_t i = 0; i < this->map.size(); i++){
+                        this->map.at(i)->mtx.lock();
+                    }
+
+                    //const std::lock_guard<std::mutex> lock(map_lock);
+
+                    
 
                     // New hash map we are going to use
                     std::vector<bucket*> new_hash_map = std::vector<bucket*>();
@@ -129,17 +144,12 @@ class linear_hashmap: public cpu_cache<K,V>{
                     new_hash_map.reserve(pow(2, i));
 
                     // Make new hash map with new buckets
-                    for(uint64_t j=0; j<num_buckets; j++){
+                    for(uint64_t j=0; j<num_buckets+1; j++){
                         bucket* b = new bucket();
                         new_hash_map.push_back(b);
                     }
                     
-                    //unlock so that we can lock every single bucket
-                    this->map.at(hash_index)->mtx.unlock();
-                    //lock every bucket first
-                    for(size_t i = 0; i < this->map.size(); i++){
-                        this->map.at(i)->mtx.lock();
-                    }
+                    
 
                     // Rehash old values into new values
                     for(auto it=this->map.begin(); it<this->map.end(); it++){
@@ -162,6 +172,10 @@ class linear_hashmap: public cpu_cache<K,V>{
                             // Also, num_records has already been incremented so don't worry about that either
                         }
                     }
+
+                    i++;
+                    ++num_buckets;
+
                     //unlock every bucket 
                     for(size_t i = 0; i < this->map.size(); i++){
                         this->map.at(i)->mtx.unlock();
@@ -173,7 +187,7 @@ class linear_hashmap: public cpu_cache<K,V>{
                 }else{
                     // I can just add a new bucket and remap the other bucket that was being used for all the values in this bucket
                     this->map.push_back(new bucket());
-                    num_buckets++;
+                    ++num_buckets;
                     
                     // Now, go to other bucket holding some of this bucket's values and add them here, if appropriate
                     bucket* old_bucket = this->map[(num_buckets-1)/2];
