@@ -3,6 +3,7 @@
  */
 #include<iostream>
 #include "seq_trad_hashmap.cpp"
+#include "adaptive_radix_trie.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -12,7 +13,8 @@
 
 enum run_type{
     sequ = 1,
-    concurr = 2
+    concurr = 2,
+    art = 3
 };
 
 // Define a struct to hold arguments
@@ -118,6 +120,9 @@ int main(int argc, char** argv){
             break;
         case concurr:
             // my_test_set = new concurrent<int>(INIT_CAP, NUM_LOCKS, 8, 2, &hash_int_0, &hash_int_1, &get_random_int);
+            break;
+        case art:
+            my_test_set = new adaptive_radix_trie<int, int>(&get_random_int, &get_random_int);
             break;
     }
 
