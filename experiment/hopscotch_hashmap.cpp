@@ -1,3 +1,8 @@
+//Code is based on Hopscotch Hashing paper by Maurice Herlihy, Nir Shavit, and Moran Tzafrir
+// Published in 2008
+
+//Concurrent Hopscotch Hashmap Class
+
 #include "common.h"
 #include<vector>
 #include<functional>
@@ -6,7 +11,9 @@
 #include<mutex>
 #include<shared_mutex>
 #include<atomic>
+#include<limits>
 
+#define  _NULL_DELTA SHRT_MIN 
 
 template <typename K, typename V>
 class hopscotch_hashmap: public cpu_cache<K, V>{
@@ -18,127 +25,51 @@ class hopscotch_hashmap: public cpu_cache<K, V>{
         struct Bucket{
             short volatile _first_delta;
             short volatile _next_delta;
+            unsigned int volatile _hash;
             K volatile _key;
-            V volatile _data;
+            V volatile _value;
+
+            void init() {
+                _first_delta	= _NULL_DELTA;
+                _next_delta		= _NULL_DELTA;
+                _hash			= _EMPTY_HASH;
+                _key			= _EMPTY_KEY;
+                _data			= _EMPTY_DATA;
+            }
         };
 
         struct Segment{
             std::mutex _lock;
-            Bucket* _table;
-            int volatile _timestamp;
-            int volatile _count;
-            Bucket* _last_bucket;
+            _u_int32_t volatile _timestamp;
+            
+            void init(){
+                _timestamp =0;
+                _lock.init();
+            }
         }
 
         //Fields
-        const int _segment_shift;
-        const int _segment_mask;
-        Segment* const _segments;
-        int _bucket_mask;
+        _u_int32_t volatile _segment_shift;
+        _u_int32_t volatile _segment_mask;
+        _u_int32_t volatile _bucket_mask;
         const int _cache_mask;
         const bool _is_cacheline_alignment:;
-        const int _hop_range;
+        //const int _hop_range;
 
-        // long num_buckets;
-        // int chain_length_max;
-        // int i_bits;
-        // hash_entry** table;
-        // std::shared_timed_mutex* table_locks;
+        Segment* volatile _segments;
+        Bucket* volatile _table;
 
-        // std::atomic<bool> resizing;
-        // std::atomic<int> threads_working;
+        static const _u_int32_t _INSERT_RANGE = 1024*4;
+        static const _u_int32_t _RESIZE_FACTOR = 2;
 
-        // Declare function pointers
-        // long (*hash0)(K);
+        //Helper Methods
+        Bucket* get_start_cacheline_bucket(Bucket* const bucket) {
+		    return (bucket - ((bucket - _table) & _cache_mask)); //can optimize 
+	    }
+
         K (*get_random_K)();
         V (*get_random_V)();
 
-        // void resize(){
-        //     // std::cerr << "IN RESIZE, New Num Buckets: " << (num_buckets*2) << std::endl;
-        //     // long original_size = size();
-        //     // Do I need this to be strong?
-        //     bool mine(false);
-        //     if(!resizing.compare_exchange_strong(mine, true)){
-        //         // This failed so we must already be resizing
-        //         return;
-        //     }else{
-        //         // Do nothing
-        //     }
-
-        //     // Block to wait for all threads to finish whatever they're doing
-        //     // Specifically, all threads should be at the top of their next method, waiting
-        //     while(threads_working > 1){}
-
-        //     hash_entry** old_table = table;
-        //     std::shared_timed_mutex* old_table_locks = table_locks;
-        //     long num_buckets_old = num_buckets;
-        //     std::shared_timed_mutex* new_table_locks = new std::shared_timed_mutex[num_buckets*2];
-
-        //     // Lock on all the buckets
-        //     // Could I use a shared lock for this? Since I just want to make sure the values won't change, not that they aren't being read. Interesting
-        //     // for(int i=0; i<num_buckets_old; i++){
-        //     //     old_table_locks[i].lock();
-        //     // }
-
-        //     // Do I just need to init to nullptr? LEFT OFF HERE!
-
-        //     // Must adjust these AFTER locking
-        //     table = new hash_entry*[num_buckets*2];
-        //     num_buckets *= 2;
-        //     i_bits += 1;
-
-        //     for(int i=0; i<num_buckets; i++){
-        //         table[i] = nullptr;
-        //     }
-
-        //     // Iterate over all buckets
-        //     for(int i=0; i<num_buckets_old; i++){
-        //         hash_entry* current_node = old_table[i];
-
-        //         if(current_node == nullptr){
-        //             // This list is already empty
-        //             continue;
-        //         }
-
-        //         while(current_node->next != nullptr){
-        //             // Check if the node is being used
-        //             if(current_node->in_use == true){
-        //                 lock_free_add(current_node->key, current_node->value);
-        //             }
-        //             hash_entry* next_node = current_node->next;
-
-        //             delete current_node;
-        //             current_node = next_node;
-        //         }
-
-        //         // Check last node
-        //         if(current_node->in_use == true){
-        //             lock_free_add(current_node->key, current_node->value);
-        //         }
-
-        //         delete current_node;
-        //     }
-
-        //     // if(original_size != size()){
-        //     //     std::cout << "ORIGINAL SIZE: " << original_size << std::endl;
-        //     //     std::cout << "WRONG" << std::endl;
-        //     //     std::cout << "New size: " << size() << std::endl;
-        //     // }
-
-        //     table_locks = new_table_locks;
-
-        //     // THIS will make everything go again
-        //     resizing=false;
-
-        //     // Unlock on all the buckets (is this necessary?)
-        //     // for(int i=0; i<num_buckets_old; i++){
-        //     //     old_table_locks[i].unlock();
-        //     // }
-
-        //     // Delete all remaining pointers
-        //     delete old_table;
-        //     delete old_table_locks;
-        // }
 
     public:
         // Constructor
@@ -147,7 +78,7 @@ class hopscotch_hashmap: public cpu_cache<K, V>{
             // // Add check for if num_buckets is not a power of two
             // chain_length_max = init_chain_length;
             // hash0 = hash0_arg;
-            // i_bits = log2l(num_buckets);
+            i_bits = log2l(num_buckets);
             // get_random_K = get_random_K_arg;
             // get_random_V = get_random_V_arg;
             // resizing = false;
@@ -191,12 +122,17 @@ class hopscotch_hashmap: public cpu_cache<K, V>{
             // delete table;
             // delete table_locks;
         }
+
+        //hash function
+        int h(K key){
+            return key % (int)pow(2, i_bits);
+        }
         
         //bool pair returned represents <was add successful, did size increase>
         std::pair<bool, bool> add(K key_to_add, V val_to_add){
-            //TODO: Am i still using the hash from before?
-            const int hash (Calc(key));
-            Segment& segment (getSegment(hash));
+            
+            const int hash = h(key_to_add);
+            Segment& segment = getSegment(hash);
             //start bucket is the bucket that key to add maps to when hashed
             Bucket* const start_bucket(getBucket(segment, hash));
 
@@ -246,119 +182,51 @@ class hopscotch_hashmap: public cpu_cache<K, V>{
         }
 
         bool remove(K to_remove){
-            // std::cerr << "IN REMOVE: " << to_remove << std::endl;
+            const int hash = h(to_remove);
+            Segment& segment (getSegment(hash));
+            Bucket* const start_bucket(getBucket(segment, hash));
+            Bucket* last_bucket(null);
+            Bucket* curr_bucket(start_bucket);
+            segment._lock.acquire();
+            short next_delta(curr_bucket -> _first_delta);
 
-            // Block execution while resizing
-            while(resizing){}
-            threads_working += 1;
-
-            // We do need to check TOCTOU here to make sure that we didn't start resizing because if we did then...
-            // We have have had a situation where threads_working was 0 and the resize thread immediately started going
-            // I could have checked resizing here, then the resize thread will go and set resizing to true and check threads_working and it's one
-            // So we just need to make sure we haven't started resizing before threads_working was incremented
-            if(resizing){
-                // This thread needs to start over
-                threads_working -= 1;
-                return remove(to_remove);
-            }
-
-            unsigned long hashed_value = hash0(to_remove);
-            long index = hashed_value >> (32-i_bits);
-
-            table_locks[index].lock();
-
-            hash_entry* current_node = table[index];
-
-            if(current_node == nullptr){
-                // Well there are no nodes so forget it
-                table_locks[index].unlock();
-                threads_working -= 1;
-                return false;
-            }
-
-            while(current_node->next != nullptr && current_node->key < to_remove){
-                current_node = current_node->next;
-            }
-
-            // If we make it here then we just need to check the node and then return
-            if(to_remove == current_node->key){
-                if(current_node->in_use == false){
-                    // Key is already removed
-                    table_locks[index].unlock();
-                    threads_working -= 1;
+            do{
+                if(_null_delta == next_delta){
+                    segment._lock.release();
                     return false;
-                }else{
-                    current_node->in_use = false;
-                    table_locks[index].unlock();
-                    threads_working -= 1;
+                }
+
+                curr_bucket += next_delta;
+                if(to_remove == curr_bucket->key){ //not sure if this is a proper way to check equality 
+                    removeKey(segment, start_bucket, curr_bucket, last_bucket, hash);
+                    if (_is_cacheline_alignment){ //optimize cache-line assignment
+                        cacheLineAlignment(segment, curr_bucket);
+                    }
+                    segment._lock.release();
                     return true;
-                }                
-            }
-
-            table_locks[index].unlock();
-
-            // Key not in data structure so return
-            threads_working -= 1;
+                } 
+                last_bucket = curr_bucket;
+                next_delta = curr_bucket->_next_delta;
+            } while(true);
             return false;
         }
 
         bool contains(K to_find){
-            // std::cerr << "IN CONTAINS: " << to_find << std::endl;
-
-            // Block execution while resizing
-            while(resizing){}
-            threads_working += 1;
-
-            // We do need to check TOCTOU here to make sure that we didn't start resizing because if we did then...
-            // We have have had a situation where threads_working was 0 and the resize thread immediately started going
-            // I could have checked resizing here, then the resize thread will go and set resizing to true and check threads_working and it's one
-            // So we just need to make sure we haven't started resizing before threads_working was incremented
-            if(resizing){
-                // This thread needs to start over
-                threads_working -= 1;
-                return contains(to_find);
-            }
-
-            unsigned long hashed_value = hash0(to_find);
-            long index = hashed_value >> (32-i_bits);
-
-            hash_entry* current_node = table[index];
-
-            if(current_node == nullptr){
-                // Well there are no nodes so forget it
-                threads_working -= 1;
-                return false;
-            }
-
-            while(current_node->next != nullptr && current_node->key < to_find){
-                // Check if the key is already in the data structure
-                // if(to_find == current_node->key){
-                //     if(current_node->in_use == false){
-                //         // Key is already removed
-                //         return false;
-                //     }else{
-                //         return true;
-                //     }
-                // // Otherwise, move to the next node
-                // }else{
-                current_node = current_node->next;
-                // }
-            }
-
-            // If we make it here then we just need to check the node and then return
-            if(to_find == current_node->key){
-                if(current_node->in_use == false){
-                    // Key is already removed
-                    threads_working -= 1;
-                    return false;
-                }else{
-                    threads_working -= 1;
-                    return true;
-                }                
-            }
-
-            // Key not in data structure so return
-            threads_working -= 1;
+            const int hash = h(to_find);
+            Segment& segment (getSegment(hash));
+            Bucket* curr_bucket(getBucket(segment, hash));
+            int start_timestamp;
+            do{
+                start_timestamp = segment._timestamp[hash & _timestamp_mask];
+                short next_delta(curr_bucket->_first_delta);
+                while(_null_delta != next_delta){
+                    curr_bucket += next_delta;
+                    if (key == curr_bucket->_key){ //Not sure if i can do this comparison like that
+                        return true;
+                    }
+                    next_delta = curr_bucket->_next_delta;
+                }
+            }while(start_timestamp != segment._timestamp[hash & _timestamp_mask]);
             return false;
         }
 
