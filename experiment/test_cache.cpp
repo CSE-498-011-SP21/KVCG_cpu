@@ -5,6 +5,7 @@
 #include "seq_trad_hashmap.cpp"
 #include "linear.cpp"
 #include "concurr_trad_hashmap.cpp"
+#include "hopscotch_v2.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -15,7 +16,8 @@
 enum run_type{
     sequ = 1,
     concurr = 2,
-    linear = 3
+    linear = 3,
+    hopscotch = 4
 };
 
 // Define a struct to hold arguments
@@ -127,6 +129,9 @@ int main(int argc, char** argv){
             break;
         case linear:
             my_test_set = new linear_hashmap<int, int>(&get_random_int, &get_random_int);
+            break;
+        case hopscotch:
+            my_test_set = HopscotchWrapper<int>();  //TODO: Figure out how to construct this
     }
 
     my_test_set->populate(POP_SIZE);

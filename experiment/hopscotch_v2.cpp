@@ -43,6 +43,8 @@
 #include <alloca.h>
 #include <strings.h>
 #include <string.h>
+#include <shared_mutex>
+#include <mutex>
 
 using namespace std;
 
@@ -115,20 +117,6 @@ public:
 	static const int _EMPTY_KEY;
 	static const int _EMPTY_DATA;
 
-	//Function that hashes key value
-	inline_ static unsigned int Calc(int key) {
-		// key ^= (key << 15) ^ 0xcd7dcd7d;
-		// key ^= (key >> 10);
-		// key ^= (key <<  3);
-		// key ^= (key >>  6);
-		// key ^= (key <<  2) + (key << 14);
-		// key ^= (key >> 16);
-		// return key;
-        unsigned long long hashed_value = hash0(key);
-        long long index = hashed_value >> (64-i_bits);
-        return index;
-	}
-
 	inline_ static bool IsEqual(int left_key, int right_key) {
 		return left_key == right_key;
 	}
@@ -153,12 +141,12 @@ const int HASH_INT::_EMPTY_DATA = 0;
 #define  _NULL_DELTA SHRT_MIN 
 
 template <typename V>
-class HopscotchWrapper{
+class HopscotchWrapper: public cpu_cache<unsigned long long, V>{
 
 using mutex = std::shared_mutex;
 
 typedef unsigned long long _tKey;
-typedef V _tData; //this will need to be changed to data_t* type
+typedef V* _tData; //this will need to be changed to data_t* type
 typedef HASH_INT _tHash;
 typedef std::unique_lock<mutex> _tLock;
 typedef Memory _tMemory;
@@ -198,6 +186,19 @@ private:
 		}
 	};
 
+    inline_ int first_msb_bit_indx(_u32 x) {
+        if(0==x) 
+            return -1;
+        return  __builtin_clz(x)-1;
+    }
+
+    //Function that hashes key value
+	inline_ unsigned int Calc(unsigned long long key) {
+        unsigned long long hashed_value = hash0(key);
+        long long index = hashed_value >> (64-i_bits);
+        return index;
+	}
+
 	// Fields ...................................................................
 	_u32 volatile		_segmentShift;
 	_u32 volatile		_segmentMask;
@@ -213,7 +214,7 @@ private:
     // Declare function pointers
     long long (*hash0)(unsigned long long);
     unsigned long long (*get_random_K)();
-    data_t* (*get_random_V)();
+    V* (*get_random_V)(); //change V* to data_t* eventually
 
 	// Constants ................................................................
 	static const _u32 _INSERT_RANGE  = 1024*4;
@@ -381,7 +382,7 @@ public:// Ctors ................................................................
 	inline_ bool containsKey( const _tKey& key ) {
 
 		//CALCULATE HASH ..........................
-		const unsigned int hash( _tHash::Calc(key) );
+		const unsigned int hash( Calc(key) );
 
 		//CHECK IF ALREADY CONTAIN ................
 		const	Segment&	segment(_segments[(hash >> _segmentShift) & _segmentMask]);
@@ -404,8 +405,15 @@ public:// Ctors ................................................................
 	}
 
 	//modification Operations ...................................................
+    std::pair<bool, bool> add(_tKey key_to_add, _tData val_to_add){
+        bool addSuccess = false;
+        bool sizeIncr = false;
+        _tData res = putIfAbsent(key_to_add, val_to_add);
+        
+    }
+
 	inline_ _tData putIfAbsent(const _tKey& key, const _tData& data) {
-		const unsigned int hash( _tHash::Calc(key) );
+		const unsigned int hash( Calc(key) );
 		Segment&	segment(_segments[(hash >> _segmentShift) & _segmentMask]);
 
 		//go over the list and look for key
@@ -480,7 +488,7 @@ public:// Ctors ................................................................
 
 	inline_ _tData remove(const _tKey& key) {
 		//CALCULATE HASH ..........................
-		const unsigned int hash( _tHash::Calc(key, i_bits) );
+		const unsigned int hash(Calc(key));
 
 		//CHECK IF ALREADY CONTAIN ................
 		Segment&	segment(_segments[(hash >> _segmentShift) & _segmentMask]);

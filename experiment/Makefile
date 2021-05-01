@@ -2,7 +2,7 @@ CC = g++
 CFLAGS = -Wall -Wextra -Werror -Wwrite-strings -pthread -std=c++17 -g
 OPT = -O3
 
-all: test_cache linear
+all: test_cache hopscotch
 
 common:
 	$(CC) $(CFLAGS) $(OPT) -c common.h
@@ -29,10 +29,14 @@ test_cache: seq_trad_hashmap.o concurr_trad_hashmap.o test_cache.cpp
 linear: dummy.o test_cache.cpp
 	$(CC) $(CFLAGS) $(OPT) -c linear.cpp
 
+hopscotch: test_cache.cpp
+	$(CC) $(CFLAGS) $(OPT) -o hopscotch -c hopscotch_v2.cpp
+
 # Add executable file names here as I make them
 clean:
 	rm -f *.o linear
 	rm -f *.o test_cache
+	rm -f *.o hopscotch
 
 test: clean test_cache
 	./test_cache -t 1 -v sequ
