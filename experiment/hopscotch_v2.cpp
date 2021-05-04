@@ -45,6 +45,13 @@
 #include <string.h>
 #include <shared_mutex>
 #include <mutex>
+#include "common.h"
+#include <vector>
+#include <functional>
+#include <iostream>
+#include <math.h>
+#include <atomic>
+#include "HopscotchWrapper.cpp"
 
 using namespace std;
 
@@ -117,6 +124,10 @@ public:
 	static const int _EMPTY_KEY;
 	static const int _EMPTY_DATA;
 
+    //to help with wraper class add 
+    static const int _ADD_SUCCESS;
+    static const int _SIZE_INCREASED;
+
 	inline_ static bool IsEqual(int left_key, int right_key) {
 		return left_key == right_key;
 	}
@@ -134,22 +145,13 @@ const unsigned int HASH_INT::_EMPTY_HASH = 0;
 const unsigned int HASH_INT::_BUSY_HASH  = 1;
 const int HASH_INT::_EMPTY_KEY  = 0;
 const int HASH_INT::_EMPTY_DATA = 0;
+const int HASH_INT::_ADD_SUCCESS = 2; 
+const int HASH_INT::_SIZE_INCREASED = 3;
 
 ////////////////////////////////////////////////////////////////////////////////
 // CLASS: ConcurrentHopscotchHashMap
 ////////////////////////////////////////////////////////////////////////////////
 #define  _NULL_DELTA SHRT_MIN 
-
-template <typename V>
-class HopscotchWrapper: public cpu_cache<unsigned long long, V>{
-
-using mutex = std::shared_mutex;
-
-typedef unsigned long long _tKey;
-typedef V* _tData; //this will need to be changed to data_t* type
-typedef HASH_INT _tHash;
-typedef std::unique_lock<mutex> _tLock;
-typedef Memory _tMemory;
 
 template <typename	_tKey, 
           typename	_tData,
@@ -209,12 +211,8 @@ private:
 	const int			_cache_mask;
 	const bool			_is_cacheline_alignment;
 
-    int i_bits; //number of bits considered by hash func.
-
-    // Declare function pointers
-    long long (*hash0)(unsigned long long);
-    unsigned long long (*get_random_K)();
-    V* (*get_random_V)(); //change V* to data_t* eventually
+    long (*hash0)(_tKey);
+    int i_bits;
 
 	// Constants ................................................................
 	static const _u32 _INSERT_RANGE  = 1024*4;
@@ -345,7 +343,8 @@ public:// Ctors ................................................................
 				_u32 inCapacity				= 32*1024,	//init capacity
 				_u32 concurrencyLevel	   = 16,			//num of updating threads
 				_u32 cache_line_size       = 64,			//Cache-line size of machine
-				bool is_optimize_cacheline = true)		
+				bool is_optimize_cacheline = true,
+                long (*hash0_arg)(_tKey)   = nullptr)		
 	:	_cache_mask					( (cache_line_size / sizeof(Bucket)) - 1 ),
 		_is_cacheline_alignment	( is_optimize_cacheline ),
 		_segmentMask  ( NearestPowerOfTwo(concurrencyLevel) - 1),
@@ -357,6 +356,9 @@ public:// Ctors ................................................................
 		const _u32 num_buckets( adjInitCap + _INSERT_RANGE + 1);
 		_bucketMask = adjInitCap - 1;
 		_segmentShift = first_msb_bit_indx(_bucketMask) - first_msb_bit_indx(_segmentMask);
+        
+        i_bits = log2l(num_buckets);
+        hash0 = hash0_arg;
 
 		//ALLOCATE THE SEGMENTS ...................
 		_segments = (Segment*) _tMemory::byte_aligned_malloc( (_segmentMask + 1) * sizeof(Segment) );
@@ -405,14 +407,52 @@ public:// Ctors ................................................................
 	}
 
 	//modification Operations ...................................................
-    std::pair<bool, bool> add(_tKey key_to_add, _tData val_to_add){
-        bool addSuccess = false;
-        bool sizeIncr = false;
-        _tData res = putIfAbsent(key_to_add, val_to_add);
-        
-    }
+    std::vector<_tData> range_query(const _tKey& start, const _tKey& end){
+        std::vector<_tData> values;
 
-	inline_ _tData putIfAbsent(const _tKey& key, const _tData& data) {
+        //Hash Value of start
+        const unsigned int hashStart( Calc(start) );
+        long segmentStartIdx = (hashStart >> _segmentShift) & _segmentMask;
+
+        //Hash value of end
+        const unsigned int hashEnd( Calc(end) );
+        long segmentEndIdx = (hashEnd >> _segmentShift) & _segmentMask;
+
+        //lock all the segments needed for range query
+        for(auto i = segmentStartIdx; i < segmentEndIdx; i++){
+            _segments[i]._lock.lock();
+        }
+
+        //for each segment in the range query
+        for(auto i = segmentStartIdx; i < segmentEndIdx; i++){
+            Segment&	segment(_segments[i]);
+
+            //go over the list and add data to vector if key <= end key
+            unsigned int start_timestamp;
+            do {
+                start_timestamp = segment._timestamp;
+                const Bucket* curr_bucket( &(_table[hash & _bucketMask]) );
+                short next_delta( curr_bucket->_first_delta );
+            while( _NULL_DELTA != next_delta ) {
+                    curr_bucket += next_delta;
+                    if(curr_bucket->key < end || (hash == curr_bucket->_hash && _tHash::IsEqual(key, curr_bucket->_key)))
+                        values.push_back(curr_bucket->_data);
+                    next_delta = curr_bucket->_next_delta;
+                }
+            } while(start_timestamp != segment._timestamp);
+
+        }
+
+        //unlock all the segments needed for range query
+        for(auto i = segmentStartIdx; i < segmentEndIdx; i++){
+            _segments[i]._lock.unlock();
+        }
+
+        return values;
+    }
+    //Changed this method to return a pair so that we can use it with our driver file
+    //TODO: confirm what needs to be returned for sizeIncrease bool
+	inline_ std::pair<bool,bool> putIfAbsent(const _tKey& key, const _tData& data) {
 		const unsigned int hash( Calc(key) );
 		Segment&	segment(_segments[(hash >> _segmentShift) & _segmentMask]);
 
@@ -426,9 +466,10 @@ public:// Ctors ................................................................
 		while (_NULL_DELTA != next_delta) {
 			compare_bucket += next_delta;
 			if( hash == compare_bucket->_hash && _tHash::IsEqual(key, compare_bucket->_key) ) {
-				const _tData rc((_tData&)(compare_bucket->_data));
+                //already existed
+				// const _tData rc((_tData&)(compare_bucket->_data));
 				segment._lock.unlock();
-				return rc;
+				return {false, false};
 			}
 			last_bucket = compare_bucket;
 			next_delta = compare_bucket->_next_delta;
@@ -443,7 +484,7 @@ public:// Ctors ................................................................
 				if( _tHash::_EMPTY_HASH == free_bucket->_hash ) {
 					add_key_to_begining_of_list(start_bucket, free_bucket, hash, key, data);
 					segment._lock.unlock();
-					return _tHash::_EMPTY_DATA;
+					return {true, false};
 				}
 				++free_bucket;
 				if(free_bucket > end_cacheline_bucket)
@@ -461,7 +502,7 @@ public:// Ctors ................................................................
 			if( _tHash::_EMPTY_HASH == free_max_bucket->_hash ) {
 				add_key_to_end_of_list(start_bucket, free_max_bucket, hash, key, data, last_bucket);
 				segment._lock.unlock();
-				return _tHash::_EMPTY_DATA;
+				return {true, false};
 			}
 			++free_max_bucket;
 		}
@@ -475,15 +516,17 @@ public:// Ctors ................................................................
 			if( _tHash::_EMPTY_HASH == free_min_bucket->_hash ) {
 				add_key_to_end_of_list(start_bucket, free_min_bucket, hash, key, data, last_bucket);
 				segment._lock.unlock();
-				return _tHash::_EMPTY_DATA;
+				return {true, false};
 			}
 			--free_min_bucket;
 		}
 
 		//NEED TO RESIZE ..........................
-		fprintf(stderr, "ERROR - RESIZE is not implemented - size %u\n", size());
-		exit(1);
-		return _tHash::_EMPTY_DATA;
+		// fprintf(stderr, "ERROR - RESIZE is not implemented - size %u\n", size());
+		// exit(1);
+        segment._lock.unlock();
+        HopscotchWrapper::resize(); 
+		return putIfAbsent(key, data);
 	}
 
 	inline_ _tData remove(const _tKey& key) {
@@ -581,5 +624,8 @@ private:
 
 #endif
 
-};
+//};
+
+
+
 

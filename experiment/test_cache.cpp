@@ -131,7 +131,7 @@ int main(int argc, char** argv){
             my_test_set = new linear_hashmap<int, int>(&get_random_int, &get_random_int);
             break;
         case hopscotch:
-            my_test_set = HopscotchWrapper<int>();  //TODO: Figure out how to construct this
+            my_test_set = new HopscotchWrapper<int, int>(&get_random_int, &get_random_int, &hash_int_0);  
     }
 
     my_test_set->populate(POP_SIZE);
