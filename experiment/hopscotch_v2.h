@@ -184,7 +184,7 @@ private:
 
 		void init() {
 			_timestamp = 0;
-			_lock.init();
+			// _lock.init();
 		}
 	};
 
@@ -407,8 +407,8 @@ public:// Ctors ................................................................
 	}
 
 	//modification Operations ...................................................
-    std::vector<_tData> range_query(const _tKey& start, const _tKey& end){
-        std::vector<_tData> values;
+    std::vector<const _tData&> range_query(const _tKey& start, const _tKey& end){
+        std::vector<const _tData&> values;
 
         //Hash Value of start
         const unsigned int hashStart( Calc(start) );
@@ -422,6 +422,9 @@ public:// Ctors ................................................................
         for(auto i = segmentStartIdx; i < segmentEndIdx; i++){
             _segments[i]._lock.lock();
         }
+        
+        //starting index of bucket in _table
+        auto j =  hashStart & _bucketMask;       
 
         //for each segment in the range query
         for(auto i = segmentStartIdx; i < segmentEndIdx; i++){
@@ -431,16 +434,16 @@ public:// Ctors ................................................................
             unsigned int start_timestamp;
             do {
                 start_timestamp = segment._timestamp;
-                const Bucket* curr_bucket( &(_table[hash & _bucketMask]) );
+                const Bucket* curr_bucket( &(_table[j]) );
                 short next_delta( curr_bucket->_first_delta );
             while( _NULL_DELTA != next_delta ) {
                     curr_bucket += next_delta;
-                    if(curr_bucket->key < end || (hash == curr_bucket->_hash && _tHash::IsEqual(key, curr_bucket->_key)))
+                    if(curr_bucket->_key <= end)
                         values.push_back(curr_bucket->_data);
                     next_delta = curr_bucket->_next_delta;
                 }
+                j++;
             } while(start_timestamp != segment._timestamp);
-
         }
 
         //unlock all the segments needed for range query
@@ -625,6 +628,76 @@ private:
 #endif
 
 //};
+
+// template <typename K,typename V>
+// class HopscotchWrapper: public cpu_cache<K, V>{
+
+//     private:
+    
+//     HopscotchHashMap<K, V, HASH_INT, std::unique_lock<std::shared_mutex>, Memory> _ds;
+//     K (*get_random_K)();
+//     V (*get_random_V)();
+//     long (*hash0)(K); 
+
+//     public:
+
+//     HopscotchWrapper( K (*get_random_K_arg)(), V (*get_random_V_arg)(), long (*hash0_arg)(K))
+//         :
+//         _ds(32*1024,16,64,true, hash0){
+//         get_random_K = get_random_K_arg;
+//         get_random_V = get_random_V_arg;
+//         hash0 = hash0_arg;
+//     }
+
+//     ~HopscotchWrapper(){
+//         delete _ds;
+//     }
+
+
+//     std::pair<bool, bool> add(K key_to_add, V val_to_add){
+//         return _ds.putIfAbsent(key_to_add, val_to_add);
+//     }
+   
+//     bool remove(K to_remove){
+//         V res = _ds.remove(to_remove);
+//         if (res == HASH_INT::_EMPTY_DATA){
+//             return false;
+//         }
+//         return true;
+//     }
+
+//     bool contains(K to_find){
+//        return _ds.containsKey(to_find);
+//     }
+
+//     std::vector<V> range_query(K start, K end){
+//         std::vector<V> values;
+//         if(start > end){
+//             return values;
+//         }
+//         values = _ds.range_query(start, end);
+//         return values;
+//     }
+
+//     long size(){
+//         unsigned int total_elements = _ds.size();
+//         return total_elements;
+//     }
+
+//     void populate(long num_elements){
+//         for(long i=0; i<num_elements; i++){
+//             // Ensures effective adds
+//             while(!add(get_random_K(), get_random_V()).second);
+//         }
+//     }
+
+//     void resize(){
+//         delete _ds;
+//         _ds = new HopscotchHashMap<K, V, HASH_INT, std::unique_lock<std::shared_mutex>, Memory>(32*1024*2,16,64,true, hash0);
+//         return;
+//         //TODO: ask if this will work, will the return to the put method not use this new ds?
+//     }
+// };
 
 
 

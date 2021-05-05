@@ -16,7 +16,7 @@
 #include <iostream>
 #include <math.h>
 #include <atomic>
-#include "hopscotch_v2.cpp"
+#include "hopscotch_v2.h"
 //CLASS HopscotchWrapper
 
 template <typename K,typename V>
