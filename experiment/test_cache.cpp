@@ -5,7 +5,7 @@
 #include "seq_trad_hashmap.cpp"
 #include "linear.cpp"
 #include "concurr_trad_hashmap.cpp"
-#include "hopscotch_v2.cpp"
+#include "hopscotch_v3.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -30,9 +30,9 @@ struct my_args{
 // Define a method for getting arguments (and validating them)
 my_args get_args(int argc, char** argv){
     my_args params;
-    params.num_threads = 2;
+    params.num_threads = 1;
     params.update_ratio = 50;
-    params.version = linear;
+    params.version = hopscotch;
 
     int opt;
     // while((opt = getopt(argc, argv, "t:u:v:")) != -1){
@@ -131,7 +131,8 @@ int main(int argc, char** argv){
             my_test_set = new linear_hashmap<int, int>(&get_random_int, &get_random_int);
             break;
         case hopscotch:
-            my_test_set = new HopscotchWrapper<int, int>(&get_random_int, &get_random_int, &hash_int_0);  
+            //my_test_set = new hopscotch_v3<int, int>(32*1024, 16, 64, true, &get_random_int, &get_random_int, &hash_int_0);  
+            my_test_set = new hopscotch_v3<int, int>(INIT_CAP, params.num_threads, 64, true, &get_random_int, &get_random_int, &hash_int_0);  
     }
 
     my_test_set->populate(POP_SIZE);

@@ -52,9 +52,12 @@ typedef unsigned long long _u64;
  *  will!), then VOLATILE should be defined as 'volatile'.
  */
 
-#define MB()  __asm__ __volatile__ (";; mf ;; " : : : "memory")
-#define WMB() MB()
-#define RMB() MB()
+// #define MB()  __asm__ __volatile__ (";; mf ;; " : : : "memory")
+// #define WMB() MB()
+// #define RMB() MB()
+#define RMB() _GLIBCXX_READ_MEM_BARRIER
+#define WMB() _GLIBCXX_WRITE_MEM_BARRIER
+#define MB()  __sync_synchronize()
 #define VOLATILE /*volatile*/
 
 // Internal Classes
@@ -104,6 +107,170 @@ public:
 	inline_ static void relocate_data_reference(int volatile& left, const int volatile& right) {
 		left = right;
 	}
+};
+
+template<typename V>
+	class VolatileType {
+		V volatile _value;
+	public:
+		inline_ explicit VolatileType() { }
+		inline_ explicit VolatileType(const V& x) {
+			_value = x;
+			Memory::write_barrier();
+		}
+		inline_ V get() const {
+			Memory::read_barrier();
+			return _value;
+		}
+
+		inline_ V getNotSafe() const {
+			return _value;
+		}
+
+		inline_ void set(const V& x) {
+			_value = x;
+			Memory::write_barrier();
+		}
+		inline_ void setNotSafe(const V& x) {
+			_value = x;
+		}
+
+		//--------------
+		inline_ operator V() const {  //convention
+			return get();
+		}
+		inline_ V operator->() const {
+			return get();
+		}
+		inline_ V volatile * operator&() {
+			Memory::read_barrier();
+			return &_value;
+		}
+
+		//--------------
+		inline_ VolatileType<V>& operator=(const V x) { 
+			_value = x;
+			Memory::write_barrier();
+			return *this;
+		}
+		//--------------
+		inline_ bool operator== (const V& right) const {
+			Memory::read_barrier();
+			return _value == right;
+		}
+		inline_ bool operator!= (const V& right) const {
+			Memory::read_barrier();
+			return _value != right;
+		}
+		inline_ bool operator== (const VolatileType<V>& right) const {
+			Memory::read_barrier();
+			return _value == right._value;
+		}
+		inline_ bool operator!= (const VolatileType<V>& right) const {
+			Memory::read_barrier();
+			return _value != right._value;
+		}
+
+		//--------------
+		inline_ VolatileType<V>& operator++ () { //prefix ++
+			++_value;
+			Memory::write_barrier();
+			return *this;
+		}
+		inline_ V operator++ (int) { //postfix ++
+			const V tmp(_value);
+			++_value;
+			Memory::write_barrier();
+			return tmp;
+		}
+		inline_ VolatileType<V>& operator-- () {// prefix --
+			--_value;
+			Memory::write_barrier();
+			return *this;
+		}
+		inline_ V operator-- (int) {// postfix --
+			const V tmp(_value);
+			--_value;
+			Memory::write_barrier();
+			return tmp;
+		}
+
+		//--------------
+		inline_ VolatileType<V>& operator+=(const V& x) { 
+			_value += x;
+			Memory::write_barrier();
+			return *this;
+		}
+		inline_ VolatileType<V>& operator-=(const V& x) { 
+			_value -= x;
+			Memory::write_barrier();
+			return *this;
+		}
+		inline_ VolatileType<V>& operator*=(const V& x) { 
+			_value *= x;
+			Memory::write_barrier();
+			return *this;
+		}
+		inline_ VolatileType<V>& operator/=(const V& x) { 
+			_value /= x;
+			Memory::write_barrier();
+			return *this;
+		}
+		//--------------
+		inline_ V operator+(const V& x) { 
+			Memory::read_barrier();
+			return _value + x;
+		}
+		inline_ V operator-(const V& x) { 
+			Memory::read_barrier();
+			return _value - x;
+		}
+		inline_ V operator*(const V& x) { 
+			Memory::read_barrier();
+			return _value * x;
+		}
+		inline_ V operator/(const V& x) { 
+			Memory::read_barrier();
+			return _value / x;
+		}
+	};
+
+inline unsigned MUTEX_ENTER(unsigned volatile* x) {
+	return __sync_lock_test_and_set(x, 0xFF);
+}
+
+inline void MUTEX_EXIT(unsigned volatile* x) {
+	return __sync_lock_release (x);
+}
+
+class TTASLock {
+public:
+    VolatileType<_u32> _lock;
+
+    TTASLock() : _lock(0) {}
+    ~TTASLock() {_lock=0;}
+
+    inline_ void init() {_lock = 0;}
+
+    inline_ void lock() {
+        do {
+            if(0 == _lock && (0 == MUTEX_ENTER(&_lock))) {
+                return;
+            }
+        } while(true);
+    }
+
+    inline_ bool tryLock() {
+        return ( 0 == _lock && 0 == MUTEX_ENTER(&_lock) );
+    }
+
+    inline_ bool isLocked() {
+        return 0 != _lock;
+    }
+
+    inline_ void unlock() {
+        MUTEX_EXIT(&_lock);
+    }
 };
 
 const unsigned int HASH_INT::_EMPTY_HASH = 0;
@@ -157,11 +324,11 @@ class hopscotch_v3: public cpu_cache<K, V>{
 
         struct Segment {
             _u32 volatile	_timestamp;
-            std::mutex	      _lock;
+            TTASLock	      _lock;
 
             void init() {
                 _timestamp = 0;
-                // _lock.init();
+                _lock.init();
             }
         };
 
@@ -366,7 +533,7 @@ class hopscotch_v3: public cpu_cache<K, V>{
 
 
         std::pair<bool, bool> add(K key_to_add, V val_to_add){
-
+            std::cout << "Time to add!\n" << std::endl;
             const unsigned int hash( Calc(key_to_add) );
             Segment&	segment(_segments[(hash >> _segmentShift) & _segmentMask]);
 
@@ -382,13 +549,14 @@ class hopscotch_v3: public cpu_cache<K, V>{
                 if( hash == compare_bucket->_hash && HASH_INT::IsEqual(key_to_add, compare_bucket->_key) ) {
                     //already existed
                     // const V rc((V&)(compare_bucket->_data));
+                    std::cout << "1\n" << std::endl;
                     segment._lock.unlock();
                     return {false, false};
                 }
                 last_bucket = compare_bucket;
                 next_delta = compare_bucket->_next_delta;
             }
-
+            std::cout << "now\n" << std::endl;
             //try to place the key in the same cache-line
             if(_is_cacheline_alignment) {
                 Bucket*	free_bucket( start_bucket );
@@ -396,6 +564,7 @@ class hopscotch_v3: public cpu_cache<K, V>{
                 Bucket*	end_cacheline_bucket(start_cacheline_bucket + _cache_mask);
                 do {
                     if( HASH_INT::_EMPTY_HASH == free_bucket->_hash ) {
+                        std::cout << "2\n" << std::endl;
                         add_key_to_begining_of_list(start_bucket, free_bucket, hash, key_to_add, val_to_add);
                         segment._lock.unlock();
                         return {true, false};
@@ -405,7 +574,7 @@ class hopscotch_v3: public cpu_cache<K, V>{
                         free_bucket = start_cacheline_bucket;
                 } while(start_bucket != free_bucket);
             }
-
+            std::cout << "here\n" << std::endl;
             //place key in arbitrary free forward bucket
             Bucket* max_bucket( start_bucket + (SHRT_MAX-1) );
             Bucket* last_table_bucket(_table + _bucketMask);
@@ -414,13 +583,14 @@ class hopscotch_v3: public cpu_cache<K, V>{
             Bucket* free_max_bucket( start_bucket + (_cache_mask + 1) );
             while (free_max_bucket <= max_bucket) {
                 if( HASH_INT::_EMPTY_HASH == free_max_bucket->_hash ) {
+                    std::cout << "3\n" << std::endl;
                     add_key_to_end_of_list(start_bucket, free_max_bucket, hash, key_to_add, val_to_add, last_bucket);
                     segment._lock.unlock();
                     return {true, false};
                 }
                 ++free_max_bucket;
             }
-
+            std::cout << "heyo\n" << std::endl;
             //place key in arbitrary free backward bucket
             Bucket* min_bucket( start_bucket - (SHRT_MAX-1) );
             if(min_bucket < _table)
@@ -428,17 +598,18 @@ class hopscotch_v3: public cpu_cache<K, V>{
             Bucket* free_min_bucket( start_bucket - (_cache_mask + 1) );
             while (free_min_bucket >= min_bucket) {
                 if( HASH_INT::_EMPTY_HASH == free_min_bucket->_hash ) {
+                    std::cout << "4\n" << std::endl;
                     add_key_to_end_of_list(start_bucket, free_min_bucket, hash, key_to_add, val_to_add, last_bucket);
                     segment._lock.unlock();
                     return {true, false};
                 }
                 --free_min_bucket;
             }
-            
+            std::cout << "heehehe\n" << std::endl;
             segment._lock.unlock();
             // resize(); 
             // return add(key_to_add, val_to_add);
-
+            std::cout << "5\n" << std::endl;
             //NEED TO RESIZE ..........................
             fprintf(stderr, "ERROR - RESIZE is not implemented - size %ld\n", size());
             // exit(1);
