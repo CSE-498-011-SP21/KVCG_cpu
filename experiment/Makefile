@@ -20,10 +20,13 @@ common:
 traditional: common.o
 	$(CC) $(CFLAGS) $(OPT) -c seq_trad_hashmap.cpp
 
+radix: common.o
+	$(CC) $(CFLAGS) $(OPT) -c radix_trie.cpp
+
 concurrent: common.o
 	$(CC) $(CFLAGS) $(OPT) -c concurr_trad_hashmap.cpp
 
-test_cache: seq_trad_hashmap.o concurr_trad_hashmap.o test_cache.cpp
+test_cache: seq_trad_hashmap.o concurr_trad_hashmap.o radix_trie.o test_cache.cpp
 	$(CC) $(CFLAGS) $(OPT) -o test_cache test_cache.cpp
 
 # Add executable file names here as I make them
