@@ -2,7 +2,7 @@ CC = g++
 CFLAGS = -Wall -Wextra -Werror -Wwrite-strings -pthread -std=c++17 -g
 OPT = -O3
 
-all: test_cache
+all: test_cache test_radix
 
 common:
 	$(CC) $(CFLAGS) $(OPT) -c common.h
@@ -28,6 +28,9 @@ concurrent: common.o
 
 test_cache: seq_trad_hashmap.o concurr_trad_hashmap.o radix_trie.o test_cache.cpp
 	$(CC) $(CFLAGS) $(OPT) -o test_cache test_cache.cpp
+
+test_radix: radix_trie.o test_radix.cpp
+	$(CC) $(CFLAGS) $(OPT) -o test_radix test_radix.cpp
 
 # Add executable file names here as I make them
 clean:

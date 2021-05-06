@@ -85,8 +85,8 @@ long hash_int_0(int to_hash){
 
 // Globals are bad... but I don't care
 std::default_random_engine generator(42);
-std::uniform_int_distribution<int> distribution(0, 2147483647);
-// std::uniform_int_distribution<int> distribution(0, 100000000);
+// std::uniform_int_distribution<int> distribution(0, 2147483647);
+std::uniform_int_distribution<int> distribution(0, 4000000);
 // std::uniform_int_distribution<int> distribution(0, 100);
 
 int get_random_int(){

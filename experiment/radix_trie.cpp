@@ -2,11 +2,11 @@
 #include "node.h"
 #include<vector>
 #include<iostream>
+#include<bitset>
 
 template <typename K, typename V>
 class radix_trie: public cpu_cache<K, V> {
     private:
-        // Base of tree with null prefix
         node<K>* root;
         long trie_size;
 
@@ -43,6 +43,8 @@ class radix_trie: public cpu_cache<K, V> {
             if (n->type == LEAF) {
                 // Are we at a duplicate leaf? If so, return success with no change in trie size
                 if (n->key == key) {
+                    leaf<K, V>* l_n= (leaf<K, V>*) n;
+                    l_n->value = val;
                     return std::make_pair(true, false);
                 }
 
@@ -62,7 +64,7 @@ class radix_trie: public cpu_cache<K, V> {
                 }
                 // Our key shares the entire prefix, recurse to the child on the appropriate side
                 node<K>* next_n = i_n->children[get_nth_bit(key, i_n->prefix_len)];
-                return add_recursive(next_n, &next_n, key, val);
+                return add_recursive(next_n, &(i_n->children[get_nth_bit(key, i_n->prefix_len)]), key, val);
             } else {
                 return std::make_pair(false, false);
             }
@@ -81,18 +83,11 @@ class radix_trie: public cpu_cache<K, V> {
             // We've reached a leaf, just check for a match
             if (n->type == LEAF) {
                 if (key == n->key) {
-                    // If the parent node is an inode, update it's prefix and prefix length
-                    // if ((*ref)->type == INNER) {
-                    //     inode<K>* i_ref = (inode<K>*) *ref;
-                    //     int n_bit = get_nth_bit(key, i_ref->prefix_len);
-                    //     i_ref->n->key = ((node<K>*)i_ref->children[~n_bit])->key;
-                    //     i_ref->prefix_len = k_bits;
-                    // }
                     *ref = NULL;
                     trie_size--;
                     return true;
                 }
-            } 
+            }
             // We're at an inner node, or something has gone horribly wrong
             if (n->type == INNER) {
                 inode<K>* i_n = (inode<K>*) n;
@@ -103,7 +98,7 @@ class radix_trie: public cpu_cache<K, V> {
                 }
                 // Our key shares the entire prefix, recurse to the child on the appropriate side
                 node<K>* next_n = i_n->children[get_nth_bit(key, i_n->prefix_len)];
-                return remove_recursive(next_n, &next_n, key);
+                return remove_recursive(next_n, &(i_n->children[get_nth_bit(key, i_n->prefix_len)]), key);
             }
             else {
                 return false;
@@ -193,9 +188,9 @@ class radix_trie: public cpu_cache<K, V> {
         }
 
         int greatest_commmon_prefix(K key, K prefix) {
-            int j, k = 0;
+            int i, j, k = 0;
             int bit_len = (int)(sizeof(K) * 8);
-            for (int i = 0; i < bit_len; i++) {
+            for (i = 0; i < bit_len; i++) {
                 j = (key >> ((bit_len - 1) - i)) & 1;
                 k = (prefix >> ((bit_len - 1) - i)) & 1;
 
@@ -203,8 +198,7 @@ class radix_trie: public cpu_cache<K, V> {
                     return i;
                 }
             }
-
-            return 0;
+            return i;
         }
 
         static node<K>* new_node(char type, K key) {
@@ -257,5 +251,13 @@ class radix_trie: public cpu_cache<K, V> {
         K mask_n_bits(K key, int n) {
             int mask = ((1 << n) - 1);
             return (key & mask);
+        }
+
+        node<K>* get_root() {
+            return root;
+        }
+
+        void p_int(int i) {
+            std::cout << std::bitset<8*sizeof(i)>(i) << "\n";
         }
 };
