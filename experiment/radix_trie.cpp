@@ -1,6 +1,7 @@
 #include "common.h"
 #include "node.h"
 #include<vector>
+#include<iostream>
 
 template <typename K, typename V>
 class radix_trie: public cpu_cache<K, V> {
@@ -21,7 +22,6 @@ class radix_trie: public cpu_cache<K, V> {
             // Pass key generation functions
             get_random_K = get_random_K_arg;
             get_random_V = get_random_V_arg;
-
             root = NULL;
         }
 
@@ -63,6 +63,8 @@ class radix_trie: public cpu_cache<K, V> {
                 // Our key shares the entire prefix, recurse to the child on the appropriate side
                 node<K>* next_n = i_n->children[get_nth_bit(key, i_n->prefix_len)];
                 return add_recursive(next_n, &next_n, key, val);
+            } else {
+                return std::make_pair(false, false);
             }
         }
 
@@ -103,6 +105,9 @@ class radix_trie: public cpu_cache<K, V> {
                 node<K>* next_n = i_n->children[get_nth_bit(key, i_n->prefix_len)];
                 return remove_recursive(next_n, &next_n, key);
             }
+            else {
+                return false;
+            }
         }
 
         bool contains(K key_to_find) {
@@ -131,7 +136,9 @@ class radix_trie: public cpu_cache<K, V> {
                 }
                 // Our key shares the entire prefix, recurse to the child on the appropriate side
                 node<K>* next_n = i_n->children[get_nth_bit(key, i_n->prefix_len)];
-                return remove_recursive(next_n, key);
+                return contains_recursive(next_n, key);
+            } else {
+                return false;
             }
         }
         
@@ -159,9 +166,15 @@ class radix_trie: public cpu_cache<K, V> {
                 if (inverse_mask_n_bits(n->key, i_n->prefix_len) <= end && mask_n_bits(n->key, i_n->prefix_len) >= start) {
                     std::vector<K> v_l = range_query_recursive(i_n->children[0], start, end);
                     std::vector<K> v_r = range_query_recursive(i_n->children[1], start, end);
-                    return v_l.insert(v_l.end(), v_r.begin(), v_r.end());
+                    std::vector<K> combined;
+                    combined.reserve(v_l.size() + v_r.size());
+                    combined.insert(combined.end(), v_l.begin(), v_l.end());
+                    combined.insert(combined.end(), v_r.begin(), v_r.end());
+                    return combined;
                 }
             }
+            std::vector<V> key_vec;
+            return key_vec;
         }
 
         long size() {
@@ -175,16 +188,16 @@ class radix_trie: public cpu_cache<K, V> {
             }
         }
 
-        int get_nth_bit(K key, int n) {
-            return ((key >> (k_bits - 1) - n) & 1);
+        static int get_nth_bit(K key, int n) {
+            return (key >> (((sizeof(K) * 8) - 1) - n)) & 1;
         }
 
         int greatest_commmon_prefix(K key, K prefix) {
-            int j, k;
-
-            for (int i = 0; i < k_bits; i++) {
-                j = (key >> ((k_bits - 1) - i)) & 1;
-                k = (prefix >> ((k_bits - 1) - i)) & 1;
+            int j, k = 0;
+            int bit_len = (int)(sizeof(K) * 8);
+            for (int i = 0; i < bit_len; i++) {
+                j = (key >> ((bit_len - 1) - i)) & 1;
+                k = (prefix >> ((bit_len - 1) - i)) & 1;
 
                 if (j != k) {
                     return i;
@@ -224,7 +237,7 @@ class radix_trie: public cpu_cache<K, V> {
         }
 
         static inode<K>* inode_split(node<K>* n, int gcp, K key, V val) {
-            leaf<K, V> l = new_leaf(key, val);
+            leaf<K, V>* l = new_leaf(key, val);
             inode<K>* i;
 
             // Determine whether to insert on the left or right

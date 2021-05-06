@@ -4,6 +4,7 @@
 #include<iostream>
 #include "seq_trad_hashmap.cpp"
 #include "concurr_trad_hashmap.cpp"
+#include "radix_trie.cpp"
 #include<random>
 #include<unistd.h>
 #include<string.h>
@@ -13,7 +14,8 @@
 
 enum run_type{
     sequ = 1,
-    concurr = 2
+    concurr = 2,
+    radix = 3
 };
 
 // Define a struct to hold arguments
@@ -52,8 +54,12 @@ my_args get_args(int argc, char** argv){
                 else if (!strcmp(optarg, "concurr"))
                 {
                     params.version = concurr;
+                }
+                 else if (!strcmp(optarg, "radix"))
+                {
+                    params.version = radix;
                 }else{
-                    std::cout << "Please use sequ, concurr, or transact for -v" << std::endl;
+                    std::cout << "Please use sequ, concurr, or radix for -v" << std::endl;
                     exit(1);
                 }
                 break;
@@ -122,6 +128,9 @@ int main(int argc, char** argv){
             break;
         case concurr:
             my_test_set = new concurr_traditional_hash_map<int, int>(INIT_CAP, 16, &hash_int_0, &get_random_int, &get_random_int);
+            break;
+        case radix:
+            my_test_set = new radix_trie<int, int>(&get_random_int, &get_random_int);
             break;
     }
 
